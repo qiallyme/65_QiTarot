@@ -41,8 +41,29 @@ alter table public.qitarot_reading_cards
   add column if not exists meaning_reversed_snapshot text,
   add column if not exists meaning_snapshot text;
 
+create or replace function public.qitarot_immutable_tsvector_simple(
+  name text,
+  suit text,
+  rank text,
+  upright_keywords text[],
+  reversed_keywords text[]
+)
+returns tsvector
+language sql
+immutable
+as $$
+  select to_tsvector('simple', 
+    coalesce(name, '') || ' ' || 
+    coalesce(suit, '') || ' ' || 
+    coalesce(rank, '') || ' ' || 
+    coalesce(array_to_string(upright_keywords || reversed_keywords, ' '), '')
+  );
+$$;
+
 create index if not exists qitarot_cards_arcana_suit_idx on public.qitarot_cards (arcana, suit, sort_order);
-create index if not exists qitarot_cards_name_search_idx on public.qitarot_cards using gin (to_tsvector('simple', name || ' ' || coalesce(suit, '') || ' ' || coalesce(rank, '') || ' ' || array_to_string(upright_keywords || reversed_keywords, ' ')));
+create index if not exists qitarot_cards_name_search_idx on public.qitarot_cards using gin (
+  public.qitarot_immutable_tsvector_simple(name, suit, rank, upright_keywords, reversed_keywords)
+);
 create index if not exists qitarot_people_normalized_name_idx on public.qitarot_people (normalized_name);
 create index if not exists qitarot_readings_person_created_idx on public.qitarot_readings (person_id, created_at desc);
 create index if not exists qitarot_reading_cards_card_id_idx on public.qitarot_reading_cards (card_id);
