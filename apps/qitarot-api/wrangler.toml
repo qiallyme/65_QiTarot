@@ -4,4 +4,4 @@ compatibility_date = "2026-07-06"
 
 [vars]
 CORS_ORIGIN = "https://tarot.qially.com"
-QITAROT_APP_SLUG = "qitarot-web"
+QITAROT_APP_SLUG = "qitarot"

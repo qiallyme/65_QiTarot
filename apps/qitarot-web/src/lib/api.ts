@@ -1,4 +1,4 @@
-import type { AnalyticsSummary, ApiEnvelope, Person, Reading, ReadingInput, SpreadTemplate, TarotCard } from '../types';
+import type { AnalyticsSummary, ApiEnvelope, Person, Reading, ReadingInput, SpreadTemplate, TarotCard, CardProfile } from '../types';
 
 const API_BASE = (import.meta.env.VITE_QITAROT_API_BASE_URL || '').replace(/\/$/, '');
 const APP_SLUG = import.meta.env.VITE_QITAROT_APP_SLUG || 'qitarot';
@@ -102,5 +102,8 @@ export const tarotApi = {
     if (filters?.card) params.set('card', filters.card);
     const query = params.toString();
     return request<Array<{ key: string; count: number; readings: string[] }>>(`/correlations${query ? `?${query}` : ''}`);
-  }
+  },
+
+  getCardProfile: (slug: string) =>
+    request<CardProfile>(`/cards/${slug}/profile`)
 };

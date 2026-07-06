@@ -4,6 +4,7 @@ import { SpreadPicker } from './components/SpreadPicker';
 import { ReadingEditor } from './components/ReadingEditor';
 import { Timeline } from './components/Timeline';
 import { Dashboard } from './components/Dashboard';
+import { CardProfileModal } from './components/CardProfileModal';
 import { FALLBACK_CARDS } from './data/cardCatalog';
 import { FALLBACK_SPREADS } from './data/localSpreads';
 import { tarotApi } from './lib/api';
@@ -19,6 +20,7 @@ export function App() {
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'fallback'>('checking');
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
+  const [activeCardSlug, setActiveCardSlug] = useState<string | null>(null);
 
   const selectedSpread = useMemo(
     () => spreads.find((spread) => spread.id === selectedSpreadId) || spreads[0],
@@ -72,6 +74,19 @@ export function App() {
     }
   }
 
+  function handleSelectCardByName(name: string) {
+    if (!name || name === 'Unconfirmed') return;
+    const card = cardCatalog.find(
+      (c) => c.name.toLowerCase() === name.toLowerCase()
+    );
+    if (card) {
+      setActiveCardSlug(card.slug);
+    } else {
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      setActiveCardSlug(slug);
+    }
+  }
+
   return (
     <main>
       <header className="hero">
@@ -86,7 +101,7 @@ export function App() {
         {notice && <div className="notice">{notice}</div>}
       </header>
 
-      <Dashboard analytics={analytics} />
+      <Dashboard analytics={analytics} onSelectCard={handleSelectCardByName} />
 
       <SpreadPicker spreads={spreads} selectedId={selectedSpread?.id} onSelect={(spread) => setSelectedSpreadId(spread.id)} />
 
@@ -120,7 +135,11 @@ export function App() {
         />
       )}
 
-      <Timeline readings={readings} />
+      <Timeline readings={readings} onSelectCard={handleSelectCardByName} />
+
+      {activeCardSlug && (
+        <CardProfileModal cardSlug={activeCardSlug} onClose={() => setActiveCardSlug(null)} />
+      )}
     </main>
   );
 }

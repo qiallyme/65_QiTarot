@@ -119,3 +119,25 @@ export type ApiEnvelope<T> = {
     details?: unknown;
   };
 };
+
+export type CardProfile = {
+  card: TarotCard;
+  stats: {
+    total_pulls: number;
+    frequency: number;
+    upright_count: number;
+    reversed_count: number;
+    average_position: number;
+    by_person: Array<{ id: string | null; name: string; count: number }>;
+  };
+  pulls: Array<{
+    reading_id: string;
+    created_at: string;
+    subject_name: string;
+    reader_name: string | null;
+    position_key: string;
+    position_label: string;
+    orientation: Orientation;
+    notes: string | null;
+  }>;
+};

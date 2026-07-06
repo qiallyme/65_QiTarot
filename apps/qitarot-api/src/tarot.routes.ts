@@ -7,6 +7,11 @@ function getReadingId(pathname: string) {
   return match?.[1];
 }
 
+function getCardSlug(pathname: string) {
+  const match = pathname.match(/^\/v1\/qitarot\/cards\/([^/]+)/);
+  return match?.[1];
+}
+
 export async function handleTarotRoute(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders(env) });
@@ -27,6 +32,16 @@ export async function handleTarotRoute(request: Request, env: Env, _ctx: Executi
 
     if (url.pathname === '/v1/qitarot/cards' && request.method === 'GET') {
       return json(await service.listCards(url), env);
+    }
+
+    const cardSlug = getCardSlug(url.pathname);
+    if (cardSlug && request.method === 'GET') {
+      return json(await service.getCardProfile(cardSlug), env);
+    }
+
+    const cardProfileMatch = url.pathname.match(/^\/v1\/qitarot\/cards\/([^/]+)\/profile$/);
+    if (cardProfileMatch && request.method === 'GET') {
+      return json(await service.getCardProfile(cardProfileMatch[1]), env);
     }
 
     if (url.pathname === '/v1/qitarot/people' && request.method === 'GET') {

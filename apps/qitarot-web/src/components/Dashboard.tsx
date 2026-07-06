@@ -29,7 +29,7 @@ function BarList({ rows }: { rows: Array<{ label: string; value: number }> }) {
   );
 }
 
-export function Dashboard({ analytics }: { analytics?: AnalyticsSummary }) {
+export function Dashboard({ analytics, onSelectCard }: { analytics?: AnalyticsSummary; onSelectCard: (name: string) => void }) {
   const suitRows = Object.entries(analytics?.suit_counts || {}).map(([label, value]) => ({
     label: suitLabels[label] || label,
     value
@@ -58,7 +58,7 @@ export function Dashboard({ analytics }: { analytics?: AnalyticsSummary }) {
         <span>Most frequent cards</span>
         <div className="chips">
           {(analytics?.top_cards || []).slice(0, 5).map((card) => (
-            <span className="chip" key={card.name}>
+            <span className="chip clickable" key={card.name} onClick={() => onSelectCard(card.name)}>
               {card.name} x {card.count}
             </span>
           ))}

@@ -1,4 +1,4 @@
-import type { Env, ReadingInput } from './tarot.types';
+import type { Env, ReadingInput, Orientation } from './tarot.types';
 import { SupabaseRest } from './supabaseRest';
 
 function encode(value: string) {
@@ -335,6 +335,80 @@ export class TarotService {
         created_at: reading.created_at,
         cards: (reading.cards || []).map((card) => card.card?.name || card.card_name).filter(Boolean)
       }))
+    };
+  }
+
+  async getCardProfile(slug: string) {
+    const cardRows = await this.db.table<CatalogCard[]>(
+      'qitarot_cards',
+      `?select=*&slug=eq.${encode(slug)}&limit=1`
+    );
+    const card = cardRows[0];
+    if (!card) throw new Error('Card not found');
+
+    const allReadings = await this.db.table<Array<{ id: string }>>(
+      'qitarot_readings',
+      `?select=id`
+    );
+    const totalReadings = allReadings.length;
+
+    const pulls = await this.db.table<any[]>(
+      'qitarot_reading_cards',
+      `?select=*,reading:qitarot_readings(*,person:qitarot_people(*))&card_id=eq.${card.id}`
+    );
+
+    const totalPulls = pulls.length;
+    let uprightCount = 0;
+    let reversedCount = 0;
+    let sumOrderIndex = 0;
+    const peopleCounts = new Map<string, { id: string | null; name: string; count: number }>();
+
+    const playByPlay = [];
+
+    for (const pull of pulls) {
+      if (pull.orientation === 'reversed') reversedCount++;
+      else uprightCount++;
+      sumOrderIndex += pull.order_index || 0;
+
+      const reading = pull.reading;
+      if (reading) {
+        const personId = reading.person_id || null;
+        const personName = reading.person?.display_name || reading.subject_name || 'Unassigned';
+        const key = personId || personName;
+        const existing = peopleCounts.get(key) || { id: personId, name: personName, count: 0 };
+        existing.count++;
+        peopleCounts.set(key, existing);
+
+        playByPlay.push({
+          reading_id: reading.id,
+          created_at: reading.created_at,
+          subject_name: personName,
+          reader_name: reading.reader_name,
+          position_key: pull.position_key,
+          position_label: pull.position_label,
+          orientation: pull.orientation,
+          notes: pull.notes
+        });
+      }
+    }
+
+    playByPlay.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const byPerson = Array.from(peopleCounts.values()).sort((a, b) => b.count - a.count);
+    const frequency = totalReadings > 0 ? totalPulls / totalReadings : 0;
+    const averagePosition = totalPulls > 0 ? sumOrderIndex / totalPulls : 0;
+
+    return {
+      card,
+      stats: {
+        total_pulls: totalPulls,
+        frequency,
+        upright_count: uprightCount,
+        reversed_count: reversedCount,
+        average_position: averagePosition,
+        by_person: byPerson
+      },
+      pulls: playByPlay
     };
   }
 }
