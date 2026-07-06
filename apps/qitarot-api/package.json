@@ -1,9 +1,10 @@
 {
-  "name": "tarot-tracker-worker",
+  "name": "@qially/qitarot-api",
   "version": "0.1.0",
   "private": true,
   "main": "src/index.ts",
   "scripts": {
+    "build": "tsc --noEmit",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",

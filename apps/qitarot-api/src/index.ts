@@ -14,6 +14,11 @@ export default {
       });
     }
 
-    return handleTarotRoute(request, env, ctx);
+    const url = new URL(request.url);
+    if (url.pathname.startsWith('/v1/qitarot')) {
+      return handleTarotRoute(request, env, ctx);
+    }
+
+    return new Response('Not Found', { status: 404 });
   }
 };

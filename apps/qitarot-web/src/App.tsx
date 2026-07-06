@@ -37,7 +37,7 @@ export function App() {
       } catch (error) {
         console.warn(error);
         setApiStatus('fallback');
-        setNotice('API Worker unavailable. Using local spread templates only. Saves require the Worker route patch.');
+        setNotice('QiTarot API unavailable. Using local spread templates only. Saves require qitarot-api.');
       }
     }
     load();
@@ -50,7 +50,7 @@ export function App() {
       const created = await tarotApi.createReading(input);
       const finalReading = photo ? await tarotApi.uploadPhoto(created.id, photo) : created;
       setReadings((current) => [finalReading, ...current]);
-      setNotice('Reading saved through the API Worker.');
+      setNotice('Reading saved through qitarot-api.');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Save failed.');
     } finally {
@@ -62,9 +62,9 @@ export function App() {
     <main>
       <header className="hero">
         <p className="eyebrow">QiLabs app shell</p>
-        <h1>Tarot Tracker</h1>
+        <h1>QiTarot</h1>
         <p>
-          Spread guide, photo capture, confirmed cards, interpretation, tags, timeline, and carryover tracking — wired for the shared API Worker.
+          Spread guide, photo capture, confirmed cards, interpretation, tags, timeline, and carryover tracking, wired to qitarot-api.
         </p>
         <div className={`status ${apiStatus}`}>
           API: {apiStatus === 'checking' ? 'checking' : apiStatus === 'online' ? 'online' : 'fallback mode'}

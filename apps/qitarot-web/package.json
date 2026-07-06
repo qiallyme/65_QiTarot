@@ -1,5 +1,5 @@
 {
-  "name": "tarot-tracker-web",
+  "name": "@qially/qitarot-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "deploy": "wrangler pages deploy dist --project-name tarot-tracker-web"
+    "deploy": "wrangler pages deploy dist --project-name qitarot-web"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

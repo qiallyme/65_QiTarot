@@ -1,8 +1,8 @@
 import type { ApiEnvelope, Reading, ReadingInput, SpreadTemplate } from '../types';
 
-const API_BASE = (import.meta.env.VITE_TAROT_API_BASE_URL || '').replace(/\/$/, '');
-const APP_SLUG = import.meta.env.VITE_TAROT_APP_SLUG || 'tarot-tracker';
-const BASE_PATH = `${API_BASE}/v1/apps/tarot`;
+const API_BASE = (import.meta.env.VITE_QITAROT_API_BASE_URL || '').replace(/\/$/, '');
+const APP_SLUG = import.meta.env.VITE_QITAROT_APP_SLUG || 'qitarot';
+const BASE_PATH = `${API_BASE}/v1/qitarot`;
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_PATH}${path}`, {

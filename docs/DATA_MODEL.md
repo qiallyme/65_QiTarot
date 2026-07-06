@@ -1,6 +1,6 @@
-# Data Model
+# QiTarot Data Model
 
-## `tarot_spread_templates`
+## `qitarot_spread_templates`
 
 Stores reusable spreads and their diagram positions.
 
@@ -27,49 +27,24 @@ Each position includes:
 
 `x` and `y` are percentages for diagram layout.
 
-## `tarot_readings`
+## `qitarot_readings`
 
 One reading session.
 
-Tracks:
+Tracks spread template, subject/person, reader, question, summary, interpretation, tags, photo storage path, raw OCR JSON, and AI status.
 
-- spread template
-- subject/person
-- reader
-- question
-- summary
-- interpretation
-- tags
-- photo storage path
-- raw OCR JSON
-- AI status
-
-## `tarot_reading_cards`
+## `qitarot_reading_cards`
 
 One row per card in a reading.
 
-Tracks:
+Tracks position key/label, order index, card name, orientation, and notes.
 
-- position key/label
-- order index
-- card name
-- orientation
-- notes
+## `qitarot_reading_links`
 
-## `tarot_reading_links`
+Optional explicit links between readings for carryover, repeated people, repeated questions, warnings, or resolved patterns.
 
-Optional explicit links between readings.
-
-Useful for:
-
-- carryover
-- same person
-- same question thread
-- repeated warning
-- resolved pattern
-
-## `tarot_ai_jobs`
+## `qitarot_ai_jobs`
 
 Queue table for OCR, interpretation, and correlation jobs.
 
-Current scaffold only creates jobs. It does not run AI. That is intentional. The shared Worker/job processor should own that.
+The current MVP creates jobs. It does not run AI work yet.

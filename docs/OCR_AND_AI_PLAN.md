@@ -1,28 +1,22 @@
-# OCR + AI Plan
+# QiTarot OCR + AI Plan
 
 ## Truth
 
-Tarot photo OCR is unreliable because decks vary wildly. The stable data source must be confirmed card names and orientations.
+Tarot photo OCR is unreliable because decks vary widely. The stable data source must be confirmed card names and orientations.
 
-## Correct flow
+## Correct Flow
 
 ```txt
 User uploads photo
-  ↓
-Worker saves photo to Supabase Storage
-  ↓
-Worker queues OCR job
-  ↓
-Vision/OCR suggests possible cards + positions
-  ↓
-User confirms/corrects cards
-  ↓
-AI interprets confirmed spread
-  ↓
-Tracker stores interpretation + carryover themes
+  -> Worker saves photo to Supabase Storage
+  -> Worker queues OCR job
+  -> Vision/OCR suggests possible cards and positions
+  -> User confirms or corrects cards
+  -> AI interprets confirmed spread
+  -> QiTarot stores interpretation and carryover themes
 ```
 
-## Minimum OCR output
+## Minimum OCR Output
 
 ```json
 {
@@ -39,7 +33,7 @@ Tracker stores interpretation + carryover themes
 }
 ```
 
-## Interpretation input
+## Interpretation Input
 
 Use:
 
@@ -52,6 +46,6 @@ Use:
 - subject/person
 - prior carryover readings, if requested
 
-## Interpretation guardrail
+## Interpretation Guardrail
 
-AI should say what pattern is suggested, not claim certainty. Tarot entries are reflective records, not legal/medical/financial conclusions.
+AI should say what pattern is suggested, not claim certainty. Tarot entries are reflective records, not legal, medical, or financial conclusions.

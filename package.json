@@ -1,16 +1,17 @@
 {
-  "name": "tarot-tracker-supabase-scaffold",
+  "name": "qitarot-supabase",
   "private": true,
   "version": "0.1.0",
   "workspaces": [
-    "apps/tarot-tracker-web",
-    "apps/tarot-tracker-worker"
+    "apps/qitarot-web",
+    "apps/qitarot-api"
   ],
   "scripts": {
-    "dev:web": "npm --workspace apps/tarot-tracker-web run dev",
-    "build:web": "npm --workspace apps/tarot-tracker-web run build",
-    "typecheck:web": "npm --workspace apps/tarot-tracker-web run typecheck",
-    "dev:worker": "npm --workspace apps/tarot-tracker-worker run dev",
-    "typecheck:worker": "npm --workspace apps/tarot-tracker-worker run typecheck"
+    "dev:web": "npm --workspace apps/qitarot-web run dev",
+    "build:web": "npm --workspace apps/qitarot-web run build",
+    "typecheck:web": "npm --workspace apps/qitarot-web run typecheck",
+    "dev:api": "npm --workspace apps/qitarot-api run dev",
+    "build:api": "npm --workspace apps/qitarot-api run build",
+    "typecheck:api": "npm --workspace apps/qitarot-api run typecheck"
   }
 }

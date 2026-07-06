@@ -1,91 +1,78 @@
-# Tarot Tracker — Supabase/Worker Scaffold
+# QiTarot
 
-This is **not a mockup**. It is a repo-ready scaffold for the Tarot Tracker app using the QiLabs pattern:
-
-```txt
-Browser / Cloudflare Pages frontend
-        ↓
-Shared Cloudflare API Worker
-        ↓
-Supabase REST / Storage / optional AI services
-```
-
-The browser never talks directly to Supabase. The shared Worker owns Supabase credentials, auth resolution, tenant resolution, storage writes, OCR/AI jobs, and persistence.
-
-## What is included
+QiTarot is a QiLabs tarot reading tracker with a React/Vite frontend, a Cloudflare Worker API, and Supabase persistence.
 
 ```txt
-apps/tarot-tracker-web/        React + Vite + Cloudflare Pages frontend
-api-worker-patch/              Drop-in route module for the existing shared API Worker
-supabase/migrations/           Tarot Tracker schema + spread seed data
-docs/                          API contract, data model, IDE/Codex handoff, deployment notes
-AGENTS.md                      Instructions for IDE agents/Codex
-.env.example                   Local frontend environment example
+Browser at tarot.qially.com
+  -> qitarot-api at api.tarot.qially.com
+  -> Supabase REST and Storage
 ```
 
-## MVP behavior
+The browser never talks directly to Supabase. Supabase service credentials belong only in `apps/qitarot-api`.
 
-The app supports the durable flow:
+## Repo Layout
 
-1. Pick a spread template.
-2. See a diagram and ordered card positions.
-3. Create a reading entry.
-4. Upload/save a photo through the Worker.
-5. Confirm card names and orientations.
-6. Save interpretation/tags/subject.
-7. View timeline and card/tag carryover.
-8. Call OCR/AI endpoints when those Worker features are implemented.
+```txt
+apps/qitarot-web/          React + Vite + Cloudflare Pages frontend
+apps/qitarot-api/          Cloudflare Worker API
+supabase/migrations/       QiTarot schema and seed data
+docs/                      API, data model, development, and deployment notes
+AGENTS.md                  Agent instructions for this repo
+.env.example               Frontend environment example
+```
 
-## Install frontend
+## Local Setup
 
 ```bash
-cd apps/tarot-tracker-web
 npm install
-npm run dev
 ```
 
-Create `apps/tarot-tracker-web/.env.local`:
+Create `apps/qitarot-web/.env` or `.env.local`:
 
 ```bash
-VITE_QI_API_BASE_URL=http://localhost:8787
-VITE_TAROT_APP_SLUG=tarot-tracker
+VITE_QITAROT_API_BASE_URL=http://localhost:8787
+VITE_QITAROT_APP_SLUG=qitarot
 ```
 
-## Deploy frontend with Cloudflare Pages
+Create `apps/qitarot-api/.dev.vars` from `apps/qitarot-api/.dev.vars.example` and fill Supabase secrets.
 
-From `apps/tarot-tracker-web`:
+Run the API and frontend in separate terminals:
 
 ```bash
-npm run build
-npx wrangler pages deploy dist --project-name tarot-tracker-web
+npm run dev:api
+npm run dev:web
 ```
 
-The included `wrangler.toml` is a template. If this is mounted under an existing Pages project, copy only the relevant vars.
+## API Routes
 
-## Wire Worker routes
-
-Copy this folder into the existing shared API Worker:
+All app routes live under:
 
 ```txt
-api-worker-patch/src/apps/tarot/
+/v1/qitarot
 ```
 
-Then mount `handleTarotRoute()` inside the existing Worker router. See:
+Core MVP checks:
+
+```bash
+curl.exe -s http://localhost:8787/v1/qitarot/health
+curl.exe -s http://localhost:8787/v1/qitarot/spreads
+```
+
+## Supabase
+
+Apply:
 
 ```txt
-api-worker-patch/README_MERGE.md
+supabase/migrations/001_qitarot.sql
 ```
 
-## Apply Supabase migration
+The migration creates `qitarot_` tables, seeds starter spreads, enables RLS, grants the Worker `service_role` access for the Supabase Data API, and creates the `qitarot-reading-photos` storage bucket.
 
-Run the SQL in:
+## Checks
 
-```txt
-supabase/migrations/001_tarot_tracker.sql
+```bash
+npm run typecheck:web
+npm run typecheck:api
+npm run build:web
+npm run build:api
 ```
-
-This creates app-specific tables prefixed with `tarot_` and seeds starter spreads.
-
-## Hard rule
-
-Do not let the frontend write directly to Supabase. That defeats the architecture and creates security/RLS trash fire later.

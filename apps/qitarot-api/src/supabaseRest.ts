@@ -36,7 +36,7 @@ export class SupabaseRest {
   }
 
   async upload(path: string, file: File): Promise<{ path: string }> {
-    const bucket = 'tarot-reading-photos';
+    const bucket = 'qitarot-reading-photos';
     const url = `${this.base}/storage/v1/object/${bucket}/${path}`;
     const res = await fetch(url, {
       method: 'POST',

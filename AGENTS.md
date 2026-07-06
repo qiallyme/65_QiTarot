@@ -1,45 +1,62 @@
-# Agent Instructions — Tarot Tracker
+# Agent Instructions - QiTarot
 
 ## Goal
 
-Turn this scaffold into a working QiLabs app without breaking the shared API Worker architecture.
+Keep `C:\QiLabs\60_QiApps\65_QiTarot` aligned to the final QiTarot app architecture without overbuilding past the MVP.
 
-## Architecture rules
+## Canonical Names
 
-- Frontend talks to the API Worker only.
-- API Worker talks to Supabase with server-side credentials.
+- App folder/root: `65_QiTarot`
+- Display name: `QiTarot`
+- App slug: `qitarot`
+- Frontend app folder: `apps/qitarot-web`
+- Worker/API folder: `apps/qitarot-api`
+- Cloudflare Pages project: `qitarot-web`
+- Cloudflare Worker project: `qitarot-api`
+- Frontend public domain: `tarot.qially.com`
+- API domain: `api.tarot.qially.com`
+- API route prefix: `/v1/qitarot`
+- Supabase table prefix: `qitarot_`
+- Supabase storage bucket: `qitarot-reading-photos`
+
+## Architecture Rules
+
+- The frontend talks only to `qitarot-api` through `VITE_QITAROT_API_BASE_URL`.
+- `qitarot-api` talks to Supabase with server-side credentials.
 - Do not put Supabase service keys in the frontend.
-- Do not create a second dedicated API Worker unless explicitly requested.
-- Prefer adding route modules to the existing shared Worker.
-- Keep all app routes under `/v1/apps/tarot/*`.
-- Keep migration tables prefixed `tarot_` unless the owner explicitly asks to fold them into a broader QiLife schema.
+- Keep QiTarot isolated in this repo.
+- Do not use or modify `C:\QiLabs\25_QiWorkers` for this app unless explicitly requested.
+- Keep all app routes under `/v1/qitarot/*`.
+- Keep migration tables prefixed `qitarot_`.
 
-## First implementation pass
+## Required Env Names
 
-1. Run the Supabase migration.
-2. Merge `api-worker-patch/src/apps/tarot` into the existing Worker.
-3. Mount `handleTarotRoute()` in the Worker’s main router before generic 404 handling.
-4. Set Worker secrets:
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - optional `CORS_ORIGIN`
-5. Run Worker locally with Wrangler.
-6. Run frontend locally.
-7. Confirm these endpoints:
-   - `GET /v1/apps/tarot/health`
-   - `GET /v1/apps/tarot/spreads`
-   - `POST /v1/apps/tarot/readings`
-   - `GET /v1/apps/tarot/readings`
+Frontend:
 
-## Do not overbuild
+```bash
+VITE_QITAROT_API_BASE_URL=http://localhost:8787
+VITE_QITAROT_APP_SLUG=qitarot
+```
 
-Avoid building deck marketplaces, payment systems, social sharing, complex astrology modules, or ten different AI agents. Finish the boring CRUD + storage + interpretation pipe first.
+Worker:
 
-## Definition of done for MVP
+```bash
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+CORS_ORIGIN=http://localhost:5173
+QITAROT_APP_SLUG=qitarot
+OPENAI_API_KEY=
+```
+
+## Definition of Done for MVP
 
 - A reading persists in Supabase.
 - Its cards persist in order.
-- Its photo saves through Worker/Supabase Storage or returns a clean “storage not configured” response.
+- Its photo saves through Worker/Supabase Storage or returns a clean storage error.
 - Timeline loads from API.
 - Interpretation text can be saved and retrieved.
 - Tags/subject are searchable enough for carryover review.
+
+## Do Not Overbuild
+
+Avoid deck marketplaces, payment systems, social sharing, complex astrology modules, or a fleet of AI agents. Finish the CRUD, storage, and interpretation pipe first.

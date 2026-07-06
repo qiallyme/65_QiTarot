@@ -1,6 +1,6 @@
-# Roadmap
+# QiTarot Roadmap
 
-## Phase 1 — Working data spine
+## Phase 1 - Working Data Spine
 
 - Spread templates load from Worker/Supabase.
 - Readings save to Supabase.
@@ -9,7 +9,7 @@
 - Tags and subject fields work.
 - Photo upload stores to Supabase Storage.
 
-## Phase 2 — AI assisted reading
+## Phase 2 - AI Assisted Reading
 
 - Enqueue interpretation job.
 - Worker builds prompt payload.
@@ -17,21 +17,21 @@
 - User can accept/edit interpretation.
 - Store accepted result.
 
-## Phase 3 — OCR assisted capture
+## Phase 3 - OCR Assisted Capture
 
 - Vision/OCR detects likely card names.
 - UI shows confidence and asks user to confirm.
 - Confirmed card data updates reading.
 
-## Phase 4 — Carryover intelligence
+## Phase 4 - Carryover Intelligence
 
 - Repeated cards by person/topic.
 - Repeated suits/major arcana ratio.
 - Reading-to-reading links.
 - Theme extraction.
-- Timeline narrative: “This issue has moved from confusion → boundary → resolution.”
+- Timeline narrative for movement from confusion to boundary to resolution.
 
-## Phase 5 — Polish
+## Phase 5 - Polish
 
 - Auth/tenant support.
 - Saved decks.

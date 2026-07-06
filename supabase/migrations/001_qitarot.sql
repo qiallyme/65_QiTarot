@@ -1,9 +1,9 @@
--- Tarot Tracker schema
--- Browser -> API Worker -> Supabase. Do not expose service role keys to frontend.
+-- QiTarot schema
+-- Browser -> qitarot-api Worker -> Supabase. Do not expose service role keys to frontend.
 
 create extension if not exists pgcrypto;
 
-create table if not exists public.tarot_spread_templates (
+create table if not exists public.qitarot_spread_templates (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
   name text not null,
@@ -16,11 +16,11 @@ create table if not exists public.tarot_spread_templates (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.tarot_readings (
+create table if not exists public.qitarot_readings (
   id uuid primary key default gen_random_uuid(),
   tenant_id text not null default 'default',
   owner_id uuid null,
-  spread_template_id uuid references public.tarot_spread_templates(id),
+  spread_template_id uuid references public.qitarot_spread_templates(id),
   subject_name text,
   reader_name text,
   question text,
@@ -35,9 +35,9 @@ create table if not exists public.tarot_readings (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.tarot_reading_cards (
+create table if not exists public.qitarot_reading_cards (
   id uuid primary key default gen_random_uuid(),
-  reading_id uuid not null references public.tarot_readings(id) on delete cascade,
+  reading_id uuid not null references public.qitarot_readings(id) on delete cascade,
   position_key text not null,
   position_label text not null,
   order_index integer not null,
@@ -48,19 +48,19 @@ create table if not exists public.tarot_reading_cards (
   unique (reading_id, order_index)
 );
 
-create table if not exists public.tarot_reading_links (
+create table if not exists public.qitarot_reading_links (
   id uuid primary key default gen_random_uuid(),
-  source_reading_id uuid not null references public.tarot_readings(id) on delete cascade,
-  target_reading_id uuid not null references public.tarot_readings(id) on delete cascade,
+  source_reading_id uuid not null references public.qitarot_readings(id) on delete cascade,
+  target_reading_id uuid not null references public.qitarot_readings(id) on delete cascade,
   link_type text not null default 'carryover',
   reason text,
   created_at timestamptz not null default now(),
   unique (source_reading_id, target_reading_id, link_type)
 );
 
-create table if not exists public.tarot_ai_jobs (
+create table if not exists public.qitarot_ai_jobs (
   id uuid primary key default gen_random_uuid(),
-  reading_id uuid not null references public.tarot_readings(id) on delete cascade,
+  reading_id uuid not null references public.qitarot_readings(id) on delete cascade,
   job_type text not null check (job_type in ('ocr', 'interpretation', 'correlation')),
   status text not null default 'queued' check (status in ('queued', 'running', 'complete', 'failed')),
   input jsonb not null default '{}'::jsonb,
@@ -70,13 +70,13 @@ create table if not exists public.tarot_ai_jobs (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists tarot_readings_created_at_idx on public.tarot_readings (created_at desc);
-create index if not exists tarot_readings_subject_idx on public.tarot_readings using gin (to_tsvector('simple', coalesce(subject_name, '') || ' ' || coalesce(question, '')));
-create index if not exists tarot_readings_tags_idx on public.tarot_readings using gin (tags);
-create index if not exists tarot_reading_cards_card_name_idx on public.tarot_reading_cards (lower(card_name));
-create index if not exists tarot_reading_cards_reading_order_idx on public.tarot_reading_cards (reading_id, order_index);
+create index if not exists qitarot_readings_created_at_idx on public.qitarot_readings (created_at desc);
+create index if not exists qitarot_readings_subject_idx on public.qitarot_readings using gin (to_tsvector('simple', coalesce(subject_name, '') || ' ' || coalesce(question, '')));
+create index if not exists qitarot_readings_tags_idx on public.qitarot_readings using gin (tags);
+create index if not exists qitarot_reading_cards_card_name_idx on public.qitarot_reading_cards (lower(card_name));
+create index if not exists qitarot_reading_cards_reading_order_idx on public.qitarot_reading_cards (reading_id, order_index);
 
-create or replace function public.set_updated_at()
+create or replace function public.qitarot_set_updated_at()
 returns trigger as $$
 begin
   new.updated_at = now();
@@ -84,44 +84,53 @@ begin
 end;
 $$ language plpgsql;
 
-drop trigger if exists tarot_spread_templates_set_updated_at on public.tarot_spread_templates;
-create trigger tarot_spread_templates_set_updated_at
-before update on public.tarot_spread_templates
-for each row execute function public.set_updated_at();
+drop trigger if exists qitarot_spread_templates_set_updated_at on public.qitarot_spread_templates;
+create trigger qitarot_spread_templates_set_updated_at
+before update on public.qitarot_spread_templates
+for each row execute function public.qitarot_set_updated_at();
 
-drop trigger if exists tarot_readings_set_updated_at on public.tarot_readings;
-create trigger tarot_readings_set_updated_at
-before update on public.tarot_readings
-for each row execute function public.set_updated_at();
+drop trigger if exists qitarot_readings_set_updated_at on public.qitarot_readings;
+create trigger qitarot_readings_set_updated_at
+before update on public.qitarot_readings
+for each row execute function public.qitarot_set_updated_at();
 
-drop trigger if exists tarot_ai_jobs_set_updated_at on public.tarot_ai_jobs;
-create trigger tarot_ai_jobs_set_updated_at
-before update on public.tarot_ai_jobs
-for each row execute function public.set_updated_at();
+drop trigger if exists qitarot_ai_jobs_set_updated_at on public.qitarot_ai_jobs;
+create trigger qitarot_ai_jobs_set_updated_at
+before update on public.qitarot_ai_jobs
+for each row execute function public.qitarot_set_updated_at();
 
 -- Storage bucket. This is safe to run repeatedly.
 insert into storage.buckets (id, name, public)
-values ('tarot-reading-photos', 'tarot-reading-photos', false)
+values ('qitarot-reading-photos', 'qitarot-reading-photos', false)
 on conflict (id) do nothing;
 
 -- RLS stance:
 -- This app is designed for Worker-mediated access using service role credentials.
 -- Keep direct frontend access blocked unless/until auth policies are designed.
-alter table public.tarot_spread_templates enable row level security;
-alter table public.tarot_readings enable row level security;
-alter table public.tarot_reading_cards enable row level security;
-alter table public.tarot_reading_links enable row level security;
-alter table public.tarot_ai_jobs enable row level security;
+alter table public.qitarot_spread_templates enable row level security;
+alter table public.qitarot_readings enable row level security;
+alter table public.qitarot_reading_cards enable row level security;
+alter table public.qitarot_reading_links enable row level security;
+alter table public.qitarot_ai_jobs enable row level security;
+
+-- Supabase Data API access for the Worker service role.
+-- Keep anon/authenticated without grants so the browser cannot bypass qitarot-api.
+grant usage on schema public to service_role;
+grant select, insert, update, delete on public.qitarot_spread_templates to service_role;
+grant select, insert, update, delete on public.qitarot_readings to service_role;
+grant select, insert, update, delete on public.qitarot_reading_cards to service_role;
+grant select, insert, update, delete on public.qitarot_reading_links to service_role;
+grant select, insert, update, delete on public.qitarot_ai_jobs to service_role;
 
 -- Public read for spread templates is optional. If the browser never calls Supabase directly, this is not used.
-drop policy if exists "spread templates are readable" on public.tarot_spread_templates;
+drop policy if exists "spread templates are readable" on public.qitarot_spread_templates;
 create policy "spread templates are readable"
-on public.tarot_spread_templates
+on public.qitarot_spread_templates
 for select
 to anon, authenticated
 using (is_active = true);
 
-insert into public.tarot_spread_templates (slug, name, description, card_count, positions, sort_order)
+insert into public.qitarot_spread_templates (slug, name, description, card_count, positions, sort_order)
 values
 (
   'three-card-thread',
@@ -192,3 +201,4 @@ set name = excluded.name,
     sort_order = excluded.sort_order,
     is_active = true,
     updated_at = now();
+

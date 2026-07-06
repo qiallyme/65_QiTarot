@@ -1,0 +1,7 @@
+name = "qitarot-web"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-07-06"
+
+[vars]
+VITE_QITAROT_API_BASE_URL = "https://api.tarot.qially.com"
+VITE_QITAROT_APP_SLUG = "qitarot-web"

@@ -17,12 +17,12 @@ export class TarotService {
   }
 
   async listSpreads() {
-    return this.db.table('tarot_spread_templates', '?select=*&is_active=eq.true&order=sort_order.asc');
+    return this.db.table('qitarot_spread_templates', '?select=*&is_active=eq.true&order=sort_order.asc');
   }
 
   async listReadings(url: URL) {
     const params = new URLSearchParams();
-    params.set('select', '*,cards:tarot_reading_cards(*)');
+    params.set('select', '*,cards:qitarot_reading_cards(*)');
     params.set('order', 'created_at.desc');
     params.set('limit', url.searchParams.get('limit') || '50');
 
@@ -31,12 +31,12 @@ export class TarotService {
     if (subject) params.set('subject_name', `ilike.*${encode(subject)}*`);
     if (tag) params.set('tags', `cs.{${encode(tag.toLowerCase())}}`);
 
-    return this.db.table('tarot_readings', `?${params.toString()}`);
+    return this.db.table('qitarot_readings', `?${params.toString()}`);
   }
 
   async createReading(input: ReadingInput) {
     const tags = normalizeTags(input.tags);
-    const readingRows = await this.db.table<Array<{ id: string }>>('tarot_readings', '', {
+    const readingRows = await this.db.table<Array<{ id: string }>>('qitarot_readings', '', {
       method: 'POST',
       body: JSON.stringify({
         spread_template_id: input.spread_template_id,
@@ -64,7 +64,7 @@ export class TarotService {
     }));
 
     if (cards.length) {
-      await this.db.table('tarot_reading_cards', '', {
+      await this.db.table('qitarot_reading_cards', '', {
         method: 'POST',
         body: JSON.stringify(cards)
       });
@@ -75,9 +75,9 @@ export class TarotService {
 
   async getReading(id: string) {
     const params = new URLSearchParams();
-    params.set('select', '*,cards:tarot_reading_cards(*)');
+    params.set('select', '*,cards:qitarot_reading_cards(*)');
     params.set('id', `eq.${id}`);
-    const rows = await this.db.table<unknown[]>('tarot_readings', `?${params.toString()}`);
+    const rows = await this.db.table<unknown[]>('qitarot_readings', `?${params.toString()}`);
     return rows[0] || null;
   }
 
@@ -89,15 +89,15 @@ export class TarotService {
     if (patch.tags) body.tags = normalizeTags(patch.tags);
 
     if (Object.keys(body).length) {
-      await this.db.table('tarot_readings', `?id=eq.${id}`, {
+      await this.db.table('qitarot_readings', `?id=eq.${id}`, {
         method: 'PATCH',
         body: JSON.stringify(body)
       });
     }
 
     if (patch.cards) {
-      await this.db.table('tarot_reading_cards', `?reading_id=eq.${id}`, { method: 'DELETE' });
-      await this.db.table('tarot_reading_cards', '', {
+      await this.db.table('qitarot_reading_cards', `?reading_id=eq.${id}`, { method: 'DELETE' });
+      await this.db.table('qitarot_reading_cards', '', {
         method: 'POST',
         body: JSON.stringify(
           patch.cards.map((card) => ({
@@ -120,7 +120,7 @@ export class TarotService {
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `${id}/spread-photo.${ext}`;
     await this.db.upload(path, file);
-    await this.db.table('tarot_readings', `?id=eq.${id}`, {
+    await this.db.table('qitarot_readings', `?id=eq.${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ photo_storage_path: path })
     });
@@ -128,11 +128,11 @@ export class TarotService {
   }
 
   async createOcrJob(id: string) {
-    const rows = await this.db.table<Array<{ id: string; status: string }>>('tarot_ai_jobs', '', {
+    const rows = await this.db.table<Array<{ id: string; status: string }>>('qitarot_ai_jobs', '', {
       method: 'POST',
       body: JSON.stringify({ reading_id: id, job_type: 'ocr', status: 'queued' })
     });
-    await this.db.table('tarot_readings', `?id=eq.${id}`, {
+    await this.db.table('qitarot_readings', `?id=eq.${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ ai_status: 'queued' })
     });
@@ -140,12 +140,11 @@ export class TarotService {
   }
 
   async requestInterpretation(id: string) {
-    // Scaffold behavior: enqueue the job. Actual OpenAI/Vision call belongs in the shared Worker job processor.
-    await this.db.table('tarot_ai_jobs', '', {
+    await this.db.table('qitarot_ai_jobs', '', {
       method: 'POST',
       body: JSON.stringify({ reading_id: id, job_type: 'interpretation', status: 'queued' })
     });
-    await this.db.table('tarot_readings', `?id=eq.${id}`, {
+    await this.db.table('qitarot_readings', `?id=eq.${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ ai_status: 'queued' })
     });
