@@ -25,6 +25,18 @@ export async function handleTarotRoute(request: Request, env: Env, _ctx: Executi
       return json(await service.listSpreads(), env);
     }
 
+    if (url.pathname === '/v1/qitarot/cards' && request.method === 'GET') {
+      return json(await service.listCards(url), env);
+    }
+
+    if (url.pathname === '/v1/qitarot/people' && request.method === 'GET') {
+      return json(await service.listPeople(url), env);
+    }
+
+    if (url.pathname === '/v1/qitarot/analytics' && request.method === 'GET') {
+      return json(await service.analytics(url), env);
+    }
+
     if (url.pathname === '/v1/qitarot/readings' && request.method === 'GET') {
       return json(await service.listReadings(url), env);
     }

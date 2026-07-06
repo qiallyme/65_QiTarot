@@ -1,4 +1,6 @@
 export type Orientation = 'upright' | 'reversed';
+export type Arcana = 'major' | 'minor';
+export type TarotSuit = 'wands' | 'cups' | 'swords' | 'pentacles';
 
 export type SpreadPosition = {
   key: string;
@@ -19,20 +21,29 @@ export type SpreadTemplate = {
 };
 
 export type ReadingCardInput = {
+  card_id?: string;
+  card_slug?: string;
   position_key: string;
   position_label: string;
   order_index: number;
   card_name: string;
   orientation: Orientation;
+  card_image_url?: string;
+  meaning_upright_snapshot?: string;
+  meaning_reversed_snapshot?: string;
+  meaning_snapshot?: string;
   notes?: string;
 };
 
 export type ReadingCard = ReadingCardInput & {
   id: string;
+  card?: TarotCard;
 };
 
 export type ReadingInput = {
   spread_template_id: string;
+  person_id?: string;
+  person_name?: string;
   subject_name?: string;
   reader_name?: string;
   question?: string;
@@ -47,6 +58,8 @@ export type Reading = {
   created_at: string;
   updated_at?: string;
   spread_template_id: string;
+  person_id?: string;
+  person?: Person;
   spread_name?: string;
   subject_name?: string;
   reader_name?: string;
@@ -59,6 +72,42 @@ export type Reading = {
   raw_ocr?: unknown;
   ai_status?: 'not_started' | 'queued' | 'running' | 'complete' | 'failed';
   cards: ReadingCard[];
+};
+
+export type TarotCard = {
+  id: string;
+  slug: string;
+  name: string;
+  arcana: Arcana;
+  suit?: TarotSuit | null;
+  rank?: string | null;
+  card_number?: number | null;
+  element?: string | null;
+  image_url: string;
+  upright_keywords: string[];
+  reversed_keywords: string[];
+  meaning_upright: string;
+  meaning_reversed: string;
+  sort_order: number;
+};
+
+export type Person = {
+  id: string;
+  display_name: string;
+  normalized_name: string;
+  notes?: string;
+  tags?: string[];
+};
+
+export type AnalyticsSummary = {
+  total_readings: number;
+  total_cards: number;
+  unique_people: number;
+  top_cards: Array<{ name: string; count: number; upright: number; reversed: number }>;
+  top_people: Array<{ name: string; count: number }>;
+  suit_counts: Record<string, number>;
+  arcana_counts: Record<string, number>;
+  recent_readings: Array<{ id: string; subject_name?: string; created_at: string; cards: string[] }>;
 };
 
 export type ApiEnvelope<T> = {

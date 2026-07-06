@@ -3,13 +3,18 @@ import { SpreadDiagram } from './components/SpreadDiagram';
 import { SpreadPicker } from './components/SpreadPicker';
 import { ReadingEditor } from './components/ReadingEditor';
 import { Timeline } from './components/Timeline';
+import { Dashboard } from './components/Dashboard';
+import { FALLBACK_CARDS } from './data/cardCatalog';
 import { FALLBACK_SPREADS } from './data/localSpreads';
 import { tarotApi } from './lib/api';
-import type { Reading, ReadingInput, SpreadTemplate } from './types';
+import type { AnalyticsSummary, Person, Reading, ReadingInput, SpreadTemplate, TarotCard } from './types';
 
 export function App() {
   const [spreads, setSpreads] = useState<SpreadTemplate[]>(FALLBACK_SPREADS);
   const [selectedSpreadId, setSelectedSpreadId] = useState<string>(FALLBACK_SPREADS[0].id);
+  const [cardCatalog, setCardCatalog] = useState<TarotCard[]>(FALLBACK_CARDS);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsSummary>();
   const [readings, setReadings] = useState<Reading[]>([]);
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'fallback'>('checking');
   const [saving, setSaving] = useState(false);
@@ -24,14 +29,20 @@ export function App() {
     async function load() {
       try {
         await tarotApi.health();
-        const [apiSpreads, apiReadings] = await Promise.all([
+        const [apiSpreads, apiCards, apiPeople, apiAnalytics, apiReadings] = await Promise.all([
           tarotApi.listSpreads(),
+          tarotApi.listCards(),
+          tarotApi.listPeople(),
+          tarotApi.getAnalytics(),
           tarotApi.listReadings({ limit: 50 })
         ]);
         if (apiSpreads.length) {
           setSpreads(apiSpreads);
           setSelectedSpreadId(apiSpreads[0].id);
         }
+        if (apiCards.length) setCardCatalog(apiCards);
+        setPeople(apiPeople);
+        setAnalytics(apiAnalytics);
         setReadings(apiReadings);
         setApiStatus('online');
       } catch (error) {
@@ -50,6 +61,9 @@ export function App() {
       const created = await tarotApi.createReading(input);
       const finalReading = photo ? await tarotApi.uploadPhoto(created.id, photo) : created;
       setReadings((current) => [finalReading, ...current]);
+      const [nextPeople, nextAnalytics] = await Promise.all([tarotApi.listPeople(), tarotApi.getAnalytics()]);
+      setPeople(nextPeople);
+      setAnalytics(nextAnalytics);
       setNotice('Reading saved through qitarot-api.');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Save failed.');
@@ -72,6 +86,8 @@ export function App() {
         {notice && <div className="notice">{notice}</div>}
       </header>
 
+      <Dashboard analytics={analytics} />
+
       <SpreadPicker spreads={spreads} selectedId={selectedSpread?.id} onSelect={(spread) => setSelectedSpreadId(spread.id)} />
 
       {selectedSpread && (
@@ -93,7 +109,16 @@ export function App() {
         </section>
       )}
 
-      {selectedSpread && <ReadingEditor key={selectedSpread.id} spread={selectedSpread} saving={saving} onSave={handleSave} />}
+      {selectedSpread && (
+        <ReadingEditor
+          key={selectedSpread.id}
+          spread={selectedSpread}
+          cardCatalog={cardCatalog}
+          people={people}
+          saving={saving}
+          onSave={handleSave}
+        />
+      )}
 
       <Timeline readings={readings} />
     </main>

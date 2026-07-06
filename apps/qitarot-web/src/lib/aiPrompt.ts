@@ -12,11 +12,23 @@ export function buildInterpretationPrompt(reading: ReadingInput, spread?: Spread
         }
       : undefined,
     reading: {
+      person_id: reading.person_id,
+      person_name: reading.person_name,
       subject_name: reading.subject_name,
       reader_name: reading.reader_name,
       question: reading.question,
       tags: reading.tags,
-      cards: reading.cards
+      cards: reading.cards.map((card) => ({
+        card_id: card.card_id,
+        card_slug: card.card_slug,
+        card_name: card.card_name,
+        orientation: card.orientation,
+        position_key: card.position_key,
+        position_label: card.position_label,
+        order_index: card.order_index,
+        standard_meaning: card.meaning_snapshot,
+        notes: card.notes
+      }))
     },
     requested_output_shape: {
       summary: '2-4 sentence plain English summary',

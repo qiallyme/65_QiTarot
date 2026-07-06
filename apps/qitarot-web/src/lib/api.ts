@@ -1,4 +1,4 @@
-import type { ApiEnvelope, Reading, ReadingInput, SpreadTemplate } from '../types';
+import type { AnalyticsSummary, ApiEnvelope, Person, Reading, ReadingInput, SpreadTemplate, TarotCard } from '../types';
 
 const API_BASE = (import.meta.env.VITE_QITAROT_API_BASE_URL || '').replace(/\/$/, '');
 const APP_SLUG = import.meta.env.VITE_QITAROT_APP_SLUG || 'qitarot';
@@ -29,9 +29,29 @@ export const tarotApi = {
 
   listSpreads: () => request<SpreadTemplate[]>('/spreads'),
 
-  listReadings: (filters?: { subject?: string; tag?: string; limit?: number }) => {
+  listCards: (filters?: { q?: string; arcana?: string; suit?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.q) params.set('q', filters.q);
+    if (filters?.arcana) params.set('arcana', filters.arcana);
+    if (filters?.suit) params.set('suit', filters.suit);
+    const query = params.toString();
+    return request<TarotCard[]>(`/cards${query ? `?${query}` : ''}`);
+  },
+
+  listPeople: (filters?: { q?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.q) params.set('q', filters.q);
+    if (filters?.limit) params.set('limit', String(filters.limit));
+    const query = params.toString();
+    return request<Person[]>(`/people${query ? `?${query}` : ''}`);
+  },
+
+  getAnalytics: () => request<AnalyticsSummary>('/analytics'),
+
+  listReadings: (filters?: { subject?: string; person_id?: string; tag?: string; limit?: number }) => {
     const params = new URLSearchParams();
     if (filters?.subject) params.set('subject', filters.subject);
+    if (filters?.person_id) params.set('person_id', filters.person_id);
     if (filters?.tag) params.set('tag', filters.tag);
     if (filters?.limit) params.set('limit', String(filters.limit));
     const query = params.toString();
