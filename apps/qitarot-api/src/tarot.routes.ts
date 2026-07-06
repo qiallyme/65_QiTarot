@@ -61,6 +61,11 @@ export async function handleTarotRoute(request: Request, env: Env, _ctx: Executi
       return json(await service.ocrSpreadImage(photo, positions), env);
     }
 
+    if (url.pathname === '/v1/qitarot/interpret-draft' && request.method === 'POST') {
+      const body = await readJson<ReadingInput>(request);
+      return json(await service.generateDraftInterpretation(body), env);
+    }
+
     if (url.pathname === '/v1/qitarot/readings' && request.method === 'GET') {
       return json(await service.listReadings(url), env);
     }

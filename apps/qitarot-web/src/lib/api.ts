@@ -128,5 +128,11 @@ export const tarotApi = {
   },
 
   getCardProfile: (slug: string) =>
-    request<CardProfile>(`/cards/${slug}/profile`)
+    request<CardProfile>(`/cards/${slug}/profile`),
+
+  generateDraftInterpretation: (input: ReadingInput) =>
+    request<{ summary: string; interpretation: string }>('/interpret-draft', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    })
 };

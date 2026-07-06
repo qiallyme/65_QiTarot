@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { SpreadDiagram } from './SpreadDiagram';
 import type { Orientation, Person, ReadingCardInput, ReadingInput, SpreadPosition, SpreadTemplate, TarotCard } from '../types';
 import { buildInterpretationPrompt } from '../lib/aiPrompt';
@@ -71,6 +71,14 @@ export function ReadingEditor({
   const [summary, setSummary] = useState('');
   const [interpretation, setInterpretation] = useState('');
   const [photo, setPhoto] = useState<File | undefined>();
+  const photoPreviewUrl = useMemo(() => {
+    if (!photo) return undefined;
+    try {
+      return URL.createObjectURL(photo);
+    } catch (e) {
+      return undefined;
+    }
+  }, [photo]);
   const [selectedSlotKey, setSelectedSlotKey] = useState(spread.positions[0]?.key || '');
   const [cardQuery, setCardQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
@@ -224,6 +232,27 @@ export function ReadingEditor({
     setCards((current) => current.map((row) => (row.position_key === positionKey ? { ...row, notes } : row)));
   }
 
+  const [drafting, setDrafting] = useState(false);
+
+  useEffect(() => {
+    if (!cards.some((c) => c.card_name)) return;
+
+    const timer = setTimeout(async () => {
+      setDrafting(true);
+      try {
+        const result = await tarotApi.generateDraftInterpretation(readingInput);
+        if (result.interpretation) setInterpretation(result.interpretation);
+        if (result.summary) setSummary(result.summary);
+      } catch (err) {
+        console.warn('Draft AI interpretation update failed:', err);
+      } finally {
+        setDrafting(false);
+      }
+    }, 4000);
+
+    return () => clearTimeout(timer);
+  }, [cards, question, subjectName, tags]);
+
   return (
     <section className="panel stack">
       <div className="panel-heading">
@@ -232,6 +261,21 @@ export function ReadingEditor({
       </div>
 
       <div className="form-grid">
+        <div className="photo-import-section wide">
+          <label className="photo-import-label">
+            📸 Import Spread Photo {analyzingPhoto && <span className="photo-loader">(Analyzing...)</span>}
+            <input type="file" accept="image/*" capture="environment" onChange={(event) => handlePhotoChange(event.target.files?.[0])} />
+          </label>
+          {photoPreviewUrl && (
+            <div className="photo-import-preview">
+              <img src={photoPreviewUrl} alt="Spread photo preview" />
+              <button type="button" className="clear-photo-btn button-link" onClick={() => setPhoto(undefined)}>
+                ✕ Remove Image
+              </button>
+            </div>
+          )}
+        </div>
+
         <label>
           Person / subject
           <input
@@ -249,13 +293,9 @@ export function ReadingEditor({
           Question / situation
           <textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="What was asked before the pull?" />
         </label>
-        <label>
+        <label className="wide">
           Tags
           <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="love, carryover, warning, work" />
-        </label>
-        <label>
-          Spread photo {analyzingPhoto && <span className="photo-loader">(Analyzing...)</span>}
-          <input type="file" accept="image/*" capture="environment" onChange={(event) => handlePhotoChange(event.target.files?.[0])} />
         </label>
       </div>
 
@@ -322,39 +362,46 @@ export function ReadingEditor({
               if (card) setCardAtPosition(positionKey, card);
             }}
             onToggleOrientation={toggleOrientation}
+            backgroundImageUrl={photoPreviewUrl}
           />
-        </div>
-      </div>
 
-      <div className="position-meanings">
-        {cards.map((card) => {
-          const prompt = spreadPositionByKey.get(card.position_key)?.prompt || '';
-          const placeholderText = `Explanation: ${prompt}${card.meaning_snapshot ? `\n\nMeaning Snap:\n${card.meaning_snapshot}` : ''}\n\nEnter notes or nuances...`;
-          return (
-            <article className={`meaning-row ${selectedSlotKey === card.position_key ? 'selected' : ''}`} key={card.position_key}>
-              <button type="button" onClick={() => setSelectedSlotKey(card.position_key)}>
-                <strong>{card.order_index}. {card.position_label}</strong>
-                <span>{card.card_name || 'Select a card'}</span>
-              </button>
-              <div>
-                <textarea
-                  value={card.notes || ''}
-                  onChange={(event) => updateNotes(card.position_key, event.target.value)}
-                  placeholder={placeholderText}
-                />
-              </div>
-            </article>
-          );
-        })}
+          {selectedSlotKey && (
+            <div className="active-slot-editor panel">
+              {(() => {
+                const card = cards.find(c => c.position_key === selectedSlotKey);
+                const prompt = spreadPositionByKey.get(selectedSlotKey)?.prompt || '';
+                const label = spreadPositionByKey.get(selectedSlotKey)?.label || '';
+                return (
+                  <div className="slot-editor-content">
+                    <div className="slot-editor-header">
+                      <h3>{label}</h3>
+                      {card?.card_name && (
+                        <button type="button" className="button-link" onClick={() => toggleOrientation(selectedSlotKey)}>
+                          Toggle ({card.orientation})
+                        </button>
+                      )}
+                    </div>
+                    <p className="hint-text">{prompt}</p>
+                    <textarea
+                      value={card?.notes || ''}
+                      onChange={(event) => updateNotes(selectedSlotKey, event.target.value)}
+                      placeholder={card?.meaning_snapshot ? `Meaning: ${card.meaning_snapshot}\n\nEnter reader notes/nuances...` : "Enter reader notes/nuances..."}
+                    />
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="form-grid">
         <label className="wide">
-          Summary
+          Summary {drafting && <span className="draft-loader">(AI drafting...)</span>}
           <textarea value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Plain-English summary" />
         </label>
         <label className="wide">
-          Interpretation
+          Interpretation {drafting && <span className="draft-loader">(AI drafting...)</span>}
           <textarea className="tall" value={interpretation} onChange={(event) => setInterpretation(event.target.value)} placeholder="AI or manual interpretation" />
         </label>
       </div>

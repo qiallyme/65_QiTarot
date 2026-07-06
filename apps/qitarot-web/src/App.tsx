@@ -27,6 +27,7 @@ export function App() {
   }>({ type: null, value: null });
   const [processingReadingId, setProcessingReadingId] = useState<string | null>(null);
   const [processingStatus, setProcessingStatus] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'draw' | 'signals' | 'history' | 'system'>('draw');
 
   const selectedSpread = useMemo(
     () => spreads.find((spread) => spread.id === selectedSpreadId) || spreads[0],
@@ -189,71 +190,154 @@ export function App() {
   }
 
   return (
-    <main>
+    <main className="mobile-viewport">
       <header className="hero">
-        <p className="eyebrow">QiLabs app shell</p>
-        <h1>QiTarot</h1>
-        <p>
-          Spread guide, photo capture, confirmed cards, interpretation, tags, timeline, and carryover tracking, wired to qitarot-api.
-        </p>
-        <div className={`status ${apiStatus}`}>
-          API: {apiStatus === 'checking' ? 'checking' : apiStatus === 'online' ? 'online' : 'fallback mode'}
+        <div className="hero-top">
+          <h1>QiTarot</h1>
+          <div className={`status-dot ${apiStatus}`} title={`API is ${apiStatus}`} />
         </div>
+        <p className="subtitle">
+          Intuitive tarot workspace powered by qitarot-api and background AI.
+        </p>
+
         {notice && <div className="notice">{notice}</div>}
+
+        {/* Desktop Navigation Top Bar Tabs */}
+        <nav className="desktop-navbar">
+          <button type="button" className={activeTab === 'draw' ? 'active' : ''} onClick={() => setActiveTab('draw')}>🔮 Draw</button>
+          <button type="button" className={activeTab === 'signals' ? 'active' : ''} onClick={() => setActiveTab('signals')}>📊 Signals</button>
+          <button type="button" className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>📜 History</button>
+          <button type="button" className={activeTab === 'system' ? 'active' : ''} onClick={() => setActiveTab('system')}>⚙️ System</button>
+        </nav>
       </header>
 
-      <SpreadPicker spreads={spreads} selectedId={selectedSpread?.id} onSelect={(spread) => setSelectedSpreadId(spread.id)} />
+      {/* Conditional Rendering of tab views */}
+      {activeTab === 'draw' && (
+        <div className="tab-view-draw">
+          <SpreadPicker spreads={spreads} selectedId={selectedSpread?.id} onSelect={(spread) => setSelectedSpreadId(spread.id)} />
 
-      {selectedSpread && (
-        <section className="panel two-col">
-          <div>
-            <p className="eyebrow">Layout</p>
-            <h2>{selectedSpread.name}</h2>
-            <p>{selectedSpread.description}</p>
-            <ol className="position-list">
-              {selectedSpread.positions.map((position) => (
-                <li key={position.key}>
-                  <strong>{position.order}. {position.label}</strong>
-                  <span>{position.prompt}</span>
-                </li>
-              ))}
-            </ol>
+          {selectedSpread && (
+            <section className="panel two-col">
+              <div>
+                <p className="eyebrow">Layout description</p>
+                <h2>{selectedSpread.name}</h2>
+                <p>{selectedSpread.description}</p>
+              </div>
+              <SpreadDiagram spread={selectedSpread} />
+            </section>
+          )}
+
+          {selectedSpread && (
+            <ReadingEditor
+              key={selectedSpread.id}
+              spread={selectedSpread}
+              cardCatalog={cardCatalog}
+              people={people}
+              saving={saving}
+              onSave={handleSave}
+            />
+          )}
+        </div>
+      )}
+
+      {activeTab === 'signals' && (
+        <div className="tab-view-signals">
+          <Dashboard
+            analytics={analytics}
+            onSelectCard={handleSelectCardByName}
+            onSelectPerson={(name) => {
+              setActiveFilter({ type: 'person', value: name });
+              setActiveTab('history');
+            }}
+            onSelectGroup={(type, value) => {
+              setActiveFilter({ type, value });
+              setActiveTab('history');
+            }}
+          />
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div className="tab-view-history">
+          <Timeline
+            readings={readings}
+            onSelectCard={handleSelectCardByName}
+            onSelectPerson={(name) => setActiveFilter({ type: 'person', value: name })}
+            activeFilter={activeFilter}
+            setActiveFilter={setActiveFilter}
+          />
+        </div>
+      )}
+
+      {activeTab === 'system' && (
+        <div className="tab-view-system panel stack">
+          <h2>System Information</h2>
+          <div className="system-status-row">
+            <span>Connection Status:</span>
+            <strong className={`status-text-${apiStatus}`}>{apiStatus.toUpperCase()}</strong>
           </div>
-          <SpreadDiagram spread={selectedSpread} />
-        </section>
+          <div className="system-detail-box">
+            <p><strong>API Endpoint:</strong> <code>api.tarot.qially.com</code></p>
+            <p><strong>App Slug:</strong> <code>qitarot</code></p>
+            <p><strong>Cloudflare Worker:</strong> <code>qitarot-api</code></p>
+            <p><strong>Loaded Templates:</strong> {spreads.length} spreads, {cardCatalog.length} catalog cards</p>
+          </div>
+          {notice && (
+            <div className="system-notice-box">
+              <strong>Active notice:</strong>
+              <p>{notice}</p>
+            </div>
+          )}
+        </div>
       )}
 
-      {selectedSpread && (
-        <ReadingEditor
-          key={selectedSpread.id}
-          spread={selectedSpread}
-          cardCatalog={cardCatalog}
-          people={people}
-          saving={saving}
-          onSave={handleSave}
-        />
-      )}
-
-      <Dashboard
-        analytics={analytics}
-        onSelectCard={handleSelectCardByName}
-        onSelectPerson={(name) => {
-          setActiveFilter({ type: 'person', value: name });
-          document.getElementById('timeline-section')?.scrollIntoView({ behavior: 'smooth' });
-        }}
-        onSelectGroup={(type, value) => {
-          setActiveFilter({ type, value });
-          document.getElementById('timeline-section')?.scrollIntoView({ behavior: 'smooth' });
-        }}
-      />
-
-      <Timeline
-        readings={readings}
-        onSelectCard={handleSelectCardByName}
-        onSelectPerson={(name) => setActiveFilter({ type: 'person', value: name })}
-        activeFilter={activeFilter}
-        setActiveFilter={setActiveFilter}
-      />
+      {/* Bottom Tab Bar for Mobile Viewport */}
+      <nav className="bottom-tab-bar">
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === 'draw' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('draw');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
+          <span className="tab-icon">🔮</span>
+          <span className="tab-label">Draw</span>
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === 'signals' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('signals');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
+          <span className="tab-icon">📊</span>
+          <span className="tab-label">Signals</span>
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('history');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
+          <span className="tab-icon">📜</span>
+          <span className="tab-label">History</span>
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === 'system' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('system');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
+          <span className="tab-icon">⚙️</span>
+          <span className="tab-label">System</span>
+        </button>
+      </nav>
 
       {activeCardSlug && (
         <CardProfileModal cardSlug={activeCardSlug} onClose={() => setActiveCardSlug(null)} />

@@ -6,7 +6,8 @@ export function SpreadDiagram({
   selectedSlotKey,
   onSelectSlot,
   onCardDrop,
-  onToggleOrientation
+  onToggleOrientation,
+  backgroundImageUrl
 }: {
   spread: SpreadTemplate;
   placedCards?: ReadingCardInput[];
@@ -14,11 +15,19 @@ export function SpreadDiagram({
   onSelectSlot?: (positionKey: string) => void;
   onCardDrop?: (positionKey: string, cardId: string) => void;
   onToggleOrientation?: (positionKey: string) => void;
+  backgroundImageUrl?: string;
 }) {
   const cardsByPosition = new Map((placedCards || []).map((card) => [card.position_key, card]));
+  const style = backgroundImageUrl
+    ? { backgroundImage: `url(${backgroundImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : undefined;
 
   return (
-    <div className="spread-diagram" aria-label={`${spread.name} diagram`}>
+    <div
+      className={`spread-diagram ${backgroundImageUrl ? 'has-bg-overlay' : ''}`}
+      style={style}
+      aria-label={`${spread.name} diagram`}
+    >
       {spread.positions.map((position) => {
         const card = cardsByPosition.get(position.key);
         const isInteractive = Boolean(onSelectSlot || onCardDrop || onToggleOrientation);

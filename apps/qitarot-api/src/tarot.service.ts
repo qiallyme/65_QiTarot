@@ -552,4 +552,65 @@ Return JSON structure:
       });
     }
   }
+
+  async generateDraftInterpretation(input: ReadingInput) {
+    const cards = input.cards || [];
+    if (!cards.some(c => c.card_name)) {
+      return { summary: '', interpretation: '' };
+    }
+
+    const spreadRows = await this.db.table<any[]>('qitarot_spread_templates', `?id=eq.${input.spread_template_id}`);
+    const spread = spreadRows[0];
+
+    let interpretation = '';
+    let summary = '';
+
+    if (!this.env.OPENAI_API_KEY) {
+      interpretation = `[Draft Interpretation Fallback] The card configuration drawn for ${input.subject_name || 'the subject'} hints at emerging energy patterns. You have placed: ${cards.filter(c => c.card_name).map(c => `${c.card_name} (${c.orientation})`).join(', ')}. Examine notes and refine context.`;
+      summary = `Emerging energetic alignment for ${input.subject_name || 'subject'}.`;
+    } else {
+      const prompt = `You are a Tarot interpretation guide. Read this tarot draw draft:
+Subject: ${input.subject_name || 'Querent'}
+Question: ${input.question || 'General reading'}
+Spread: ${spread?.name || 'Three Card Thread'}
+Cards:
+${cards.filter(c => c.card_name).map((c: any) => `- ${c.position_label}: ${c.card_name} (${c.orientation}) - Notes: ${c.notes || ''}`).join('\n')}
+
+Provide:
+1. A summary of the reading (max 100 characters).
+2. A detailed tarot interpretation explaining the cards, dynamic carryover, and final verdict.
+Return JSON structure:
+{
+  "summary": "...",
+  "interpretation": "..."
+}`;
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: 'You are a Tarot interpreter. Return JSON only.' },
+            { role: 'user', content: prompt }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const data = await response.json() as any;
+      const result = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+      summary = result.summary || '';
+      interpretation = result.interpretation || '';
+    }
+
+    return { summary, interpretation };
+  }
 }
