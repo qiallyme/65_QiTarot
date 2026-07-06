@@ -3,11 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "workspaces": [
-    "apps/tarot-tracker-web"
+    "apps/tarot-tracker-web",
+    "apps/tarot-tracker-worker"
   ],
   "scripts": {
     "dev:web": "npm --workspace apps/tarot-tracker-web run dev",
     "build:web": "npm --workspace apps/tarot-tracker-web run build",
-    "typecheck:web": "npm --workspace apps/tarot-tracker-web run typecheck"
+    "typecheck:web": "npm --workspace apps/tarot-tracker-web run typecheck",
+    "dev:worker": "npm --workspace apps/tarot-tracker-worker run dev",
+    "typecheck:worker": "npm --workspace apps/tarot-tracker-worker run typecheck"
   }
 }

@@ -1,6 +1,6 @@
 import type { ApiEnvelope, Reading, ReadingInput, SpreadTemplate } from '../types';
 
-const API_BASE = (import.meta.env.VITE_QI_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_TAROT_API_BASE_URL || '').replace(/\/$/, '');
 const APP_SLUG = import.meta.env.VITE_TAROT_APP_SLUG || 'tarot-tracker';
 const BASE_PATH = `${API_BASE}/v1/apps/tarot`;
 

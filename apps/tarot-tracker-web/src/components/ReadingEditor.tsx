@@ -32,7 +32,7 @@ export function ReadingEditor({
       position_label: position.label,
       order_index: position.order,
       card_name: '',
-      orientation: 'upright' as const,
+      orientation: 'upright' as 'upright' | 'reversed',
       notes: ''
     }))
   );

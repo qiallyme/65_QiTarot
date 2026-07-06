@@ -48,7 +48,7 @@ export async function handleTarotRoute(request: Request, env: Env, _ctx: Executi
     if (readingId && url.pathname === `/v1/apps/tarot/readings/${readingId}/photo` && request.method === 'POST') {
       const form = await request.formData();
       const photo = form.get('photo');
-      if (!(photo instanceof File)) return error(env, 400, 'missing_photo', 'Expected multipart field named photo.');
+      if (!photo || typeof photo === 'string') return error(env, 400, 'missing_photo', 'Expected multipart field named photo.');
       return json(await service.uploadPhoto(readingId, photo), env);
     }
 
