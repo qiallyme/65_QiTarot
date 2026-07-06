@@ -1,0 +1,13 @@
+{
+  "name": "tarot-tracker-supabase-scaffold",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/tarot-tracker-web"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/tarot-tracker-web run dev",
+    "build:web": "npm --workspace apps/tarot-tracker-web run build",
+    "typecheck:web": "npm --workspace apps/tarot-tracker-web run typecheck"
+  }
+}

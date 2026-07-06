@@ -1,0 +1,7 @@
+name = "tarot-tracker-web"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-07-06"
+
+[vars]
+VITE_QI_API_BASE_URL = "https://api.qially.com"
+VITE_TAROT_APP_SLUG = "tarot-tracker"
