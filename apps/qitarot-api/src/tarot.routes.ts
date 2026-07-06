@@ -52,13 +52,26 @@ export async function handleTarotRoute(request: Request, env: Env, _ctx: Executi
       return json(await service.analytics(url), env);
     }
 
+    if (url.pathname === '/v1/qitarot/ocr' && request.method === 'POST') {
+      const form = await request.formData();
+      const photo = form.get('photo');
+      const positionsStr = form.get('positions') as string;
+      if (!photo || typeof photo === 'string') return error(env, 400, 'missing_photo', 'Expected multipart field named photo.');
+      const positions = positionsStr ? JSON.parse(positionsStr) : [];
+      return json(await service.ocrSpreadImage(photo, positions), env);
+    }
+
     if (url.pathname === '/v1/qitarot/readings' && request.method === 'GET') {
       return json(await service.listReadings(url), env);
     }
 
     if (url.pathname === '/v1/qitarot/readings' && request.method === 'POST') {
       const body = await readJson<ReadingInput>(request);
-      return json(await service.createReading(body), env, 201);
+      const created = (await service.createReading(body)) as any;
+      if (created && created.id) {
+        _ctx.waitUntil(service.runBackgroundInterpretation(created.id));
+      }
+      return json(created, env, 201);
     }
 
     const readingId = getReadingId(url.pathname);

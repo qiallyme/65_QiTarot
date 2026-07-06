@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { SpreadDiagram } from './SpreadDiagram';
 import type { Orientation, Person, ReadingCardInput, ReadingInput, SpreadPosition, SpreadTemplate, TarotCard } from '../types';
 import { buildInterpretationPrompt } from '../lib/aiPrompt';
+import { tarotApi } from '../lib/api';
 
 function splitTags(input: string) {
   return input
@@ -74,6 +75,7 @@ export function ReadingEditor({
   const [cardQuery, setCardQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
   const [cards, setCards] = useState<ReadingCardInput[]>(() => initialCards(spread));
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
 
   const peopleByName = useMemo(
     () => new Map(people.map((person) => [person.display_name.trim().toLowerCase(), person])),
@@ -134,6 +136,21 @@ export function ReadingEditor({
 
   const promptPayload = useMemo(() => buildInterpretationPrompt(readingInput, spread), [readingInput, spread]);
 
+  function updateAutopopulatedTags(updatedCards: ReadingCardInput[]) {
+    const kws = new Set<string>();
+    for (const c of updatedCards) {
+      if (!c.card_name) continue;
+      const catalogCard = cardCatalog.find(cc => cc.name.toLowerCase() === c.card_name.toLowerCase());
+      if (catalogCard) {
+        const keywords = c.orientation === 'reversed' ? catalogCard.reversed_keywords : catalogCard.upright_keywords;
+        keywords.slice(0, 2).forEach(k => kws.add(k.toLowerCase()));
+      }
+    }
+    if (kws.size > 0) {
+      setTags(Array.from(kws).join(', '));
+    }
+  }
+
   function setCardAtPosition(positionKey: string, card: TarotCard) {
     const position = spreadPositionByKey.get(positionKey);
     if (!position) return;
@@ -141,7 +158,9 @@ export function ReadingEditor({
     setCards((current) => {
       const existing = current.find((row) => row.position_key === positionKey);
       const orientation = existing?.orientation || 'upright';
-      return current.map((row) => (row.position_key === positionKey ? cardInputFor(position, card, orientation) : row));
+      const next = current.map((row) => (row.position_key === positionKey ? cardInputFor(position, card, orientation) : row));
+      updateAutopopulatedTags(next);
+      return next;
     });
 
     const currentIndex = spread.positions.findIndex((positionRow) => positionRow.key === positionKey);
@@ -158,8 +177,8 @@ export function ReadingEditor({
   }
 
   function toggleOrientation(positionKey: string) {
-    setCards((current) =>
-      current.map((row) => {
+    setCards((current) => {
+      const next = current.map((row) => {
         if (row.position_key !== positionKey || !row.card_name) return row;
         const nextOrientation: Orientation = row.orientation === 'reversed' ? 'upright' : 'reversed';
         return {
@@ -167,9 +186,38 @@ export function ReadingEditor({
           orientation: nextOrientation,
           meaning_snapshot: nextOrientation === 'reversed' ? row.meaning_reversed_snapshot : row.meaning_upright_snapshot
         };
-      })
-    );
+      });
+      updateAutopopulatedTags(next);
+      return next;
+    });
     setSelectedSlotKey(positionKey);
+  }
+
+  async function handlePhotoChange(file?: File) {
+    if (!file) return;
+    setPhoto(file);
+    setAnalyzingPhoto(true);
+    try {
+      const ocrResult = await tarotApi.runOcrPreSave(file, spread.positions);
+      setCards((current) => {
+        const next = [...current];
+        for (const match of ocrResult.cards) {
+          const idx = next.findIndex((c) => c.position_key === match.position_key);
+          if (idx !== -1) {
+            const catCard = cardCatalog.find((cc) => cc.name.toLowerCase() === match.card_name.toLowerCase());
+            if (catCard) {
+              next[idx] = cardInputFor(spread.positions[idx], catCard, match.orientation);
+            }
+          }
+        }
+        updateAutopopulatedTags(next);
+        return next;
+      });
+    } catch (err) {
+      console.error('OCR failed:', err);
+    } finally {
+      setAnalyzingPhoto(false);
+    }
   }
 
   function updateNotes(positionKey: string, notes: string) {
@@ -206,8 +254,8 @@ export function ReadingEditor({
           <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="love, carryover, warning, work" />
         </label>
         <label>
-          Spread photo
-          <input type="file" accept="image/*" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0])} />
+          Spread photo {analyzingPhoto && <span className="photo-loader">(Analyzing...)</span>}
+          <input type="file" accept="image/*" capture="environment" onChange={(event) => handlePhotoChange(event.target.files?.[0])} />
         </label>
       </div>
 
@@ -279,22 +327,25 @@ export function ReadingEditor({
       </div>
 
       <div className="position-meanings">
-        {cards.map((card) => (
-          <article className={`meaning-row ${selectedSlotKey === card.position_key ? 'selected' : ''}`} key={card.position_key}>
-            <button type="button" onClick={() => setSelectedSlotKey(card.position_key)}>
-              <strong>{card.order_index}. {card.position_label}</strong>
-              <span>{card.card_name || 'Select a card'}</span>
-            </button>
-            <div>
-              <p>{card.meaning_snapshot || spreadPositionByKey.get(card.position_key)?.prompt}</p>
-              <textarea
-                value={card.notes || ''}
-                onChange={(event) => updateNotes(card.position_key, event.target.value)}
-                placeholder="Reader note or observed nuance"
-              />
-            </div>
-          </article>
-        ))}
+        {cards.map((card) => {
+          const prompt = spreadPositionByKey.get(card.position_key)?.prompt || '';
+          const placeholderText = `Explanation: ${prompt}${card.meaning_snapshot ? `\n\nMeaning Snap:\n${card.meaning_snapshot}` : ''}\n\nEnter notes or nuances...`;
+          return (
+            <article className={`meaning-row ${selectedSlotKey === card.position_key ? 'selected' : ''}`} key={card.position_key}>
+              <button type="button" onClick={() => setSelectedSlotKey(card.position_key)}>
+                <strong>{card.order_index}. {card.position_label}</strong>
+                <span>{card.card_name || 'Select a card'}</span>
+              </button>
+              <div>
+                <textarea
+                  value={card.notes || ''}
+                  onChange={(event) => updateNotes(card.position_key, event.target.value)}
+                  placeholder={placeholderText}
+                />
+              </div>
+            </article>
+          );
+        })}
       </div>
 
       <div className="form-grid">

@@ -3,7 +3,10 @@
 ## Supabase
 
 - [ ] Run `supabase/migrations/001_qitarot.sql`.
+- [ ] Run `supabase/migrations/20260706100441_qitarot_catalog_people_analytics.sql`.
 - [ ] Confirm `qitarot_` tables exist.
+- [ ] Confirm `qitarot_cards` has 78 rows.
+- [ ] Confirm `qitarot_people` exists.
 - [ ] Confirm spread seed rows exist in `qitarot_spread_templates`.
 - [ ] Confirm storage bucket `qitarot-reading-photos` exists.
 - [ ] Confirm frontend cannot write directly to protected tables.

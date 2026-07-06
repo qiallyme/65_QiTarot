@@ -21,6 +21,12 @@ export function App() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [activeCardSlug, setActiveCardSlug] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<{
+    type: 'person' | 'tag' | 'suit' | 'arcana' | 'card' | null;
+    value: string | null;
+  }>({ type: null, value: null });
+  const [processingReadingId, setProcessingReadingId] = useState<string | null>(null);
+  const [processingStatus, setProcessingStatus] = useState<string>('');
 
   const selectedSpread = useMemo(
     () => spreads.find((spread) => spread.id === selectedSpreadId) || spreads[0],
@@ -31,30 +37,122 @@ export function App() {
     async function load() {
       try {
         await tarotApi.health();
-        const [apiSpreads, apiCards, apiPeople, apiAnalytics, apiReadings] = await Promise.all([
-          tarotApi.listSpreads(),
-          tarotApi.listCards(),
-          tarotApi.listPeople(),
-          tarotApi.getAnalytics(),
-          tarotApi.listReadings({ limit: 50 })
-        ]);
-        if (apiSpreads.length) {
-          setSpreads(apiSpreads);
-          setSelectedSpreadId(apiSpreads[0].id);
-        }
-        if (apiCards.length) setCardCatalog(apiCards);
-        setPeople(apiPeople);
-        setAnalytics(apiAnalytics);
-        setReadings(apiReadings);
         setApiStatus('online');
+
+        try {
+          const apiSpreads = await tarotApi.listSpreads();
+          if (apiSpreads.length) {
+            setSpreads(apiSpreads);
+            setSelectedSpreadId(apiSpreads[0].id);
+          }
+        } catch (e) {
+          console.warn('Failed to load spreads template:', e);
+        }
+
+        try {
+          const apiCards = await tarotApi.listCards();
+          if (apiCards.length) setCardCatalog(apiCards);
+        } catch (e) {
+          console.warn('Failed to load card catalog:', e);
+        }
+
+        try {
+          const apiPeople = await tarotApi.listPeople();
+          setPeople(apiPeople);
+        } catch (e) {
+          console.warn('Failed to load people:', e);
+        }
+
+        try {
+          const apiAnalytics = await tarotApi.getAnalytics();
+          setAnalytics(apiAnalytics);
+        } catch (e) {
+          console.warn('Failed to load analytics:', e);
+        }
+
+        try {
+          const apiReadings = await tarotApi.listReadings({ limit: 50 });
+          setReadings(apiReadings);
+        } catch (e) {
+          console.warn('Failed to load readings:', e);
+        }
       } catch (error) {
-        console.warn(error);
+        console.warn('Tarot health check failed:', error);
         setApiStatus('fallback');
-        setNotice('QiTarot API unavailable. Using local spread templates only. Saves require qitarot-api.');
+        setNotice('QiTarot API is offline. Local spreads enabled, saves disabled.');
       }
     }
     load();
   }, []);
+
+  function playChime() {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.1);
+
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.0);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 1.0);
+    } catch (e) {
+      console.warn('Audio check blocked:', e);
+    }
+  }
+
+  async function pollReadingInterpretation(id: string) {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      if (attempts > 30) {
+        clearInterval(interval);
+        setProcessingReadingId(null);
+        setNotice('AI interpretation is taking a moment in the background. Check timeline shortly.');
+        setSaving(false);
+        return;
+      }
+
+      try {
+        const current = await tarotApi.getReading(id);
+        if (current.ai_status === 'complete' || current.ai_status === 'failed') {
+          clearInterval(interval);
+          playChime();
+
+          setReadings((prev) => {
+            const idx = prev.findIndex(r => r.id === id);
+            if (idx !== -1) {
+              return prev.map(r => r.id === id ? current : r);
+            }
+            return [current, ...prev];
+          });
+
+          const [nextPeople, nextAnalytics] = await Promise.all([
+            tarotApi.listPeople(),
+            tarotApi.getAnalytics()
+          ]);
+          setPeople(nextPeople);
+          setAnalytics(nextAnalytics);
+
+          setProcessingReadingId(null);
+          setNotice('AI interpretation complete!');
+          setSaving(false);
+
+          // Scroll to timeline to show the card draw details
+          document.getElementById('timeline-section')?.scrollIntoView({ behavior: 'smooth' });
+        }
+      } catch (err) {
+        console.warn('Polling error:', err);
+      }
+    }, 2000);
+  }
 
   async function handleSave(input: ReadingInput, photo?: File) {
     setSaving(true);
@@ -62,14 +160,17 @@ export function App() {
     try {
       const created = await tarotApi.createReading(input);
       const finalReading = photo ? await tarotApi.uploadPhoto(created.id, photo) : created;
+      
+      // Update readings immediately to show up in the timeline
       setReadings((current) => [finalReading, ...current]);
-      const [nextPeople, nextAnalytics] = await Promise.all([tarotApi.listPeople(), tarotApi.getAnalytics()]);
-      setPeople(nextPeople);
-      setAnalytics(nextAnalytics);
-      setNotice('Reading saved through qitarot-api.');
+
+      // Set polling visual state
+      setProcessingReadingId(finalReading.id);
+      setProcessingStatus('consulting the oracle...');
+
+      pollReadingInterpretation(finalReading.id);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Save failed.');
-    } finally {
       setSaving(false);
     }
   }
@@ -100,8 +201,6 @@ export function App() {
         </div>
         {notice && <div className="notice">{notice}</div>}
       </header>
-
-      <Dashboard analytics={analytics} onSelectCard={handleSelectCardByName} />
 
       <SpreadPicker spreads={spreads} selectedId={selectedSpread?.id} onSelect={(spread) => setSelectedSpreadId(spread.id)} />
 
@@ -135,10 +234,41 @@ export function App() {
         />
       )}
 
-      <Timeline readings={readings} onSelectCard={handleSelectCardByName} />
+      <Dashboard
+        analytics={analytics}
+        onSelectCard={handleSelectCardByName}
+        onSelectPerson={(name) => {
+          setActiveFilter({ type: 'person', value: name });
+          document.getElementById('timeline-section')?.scrollIntoView({ behavior: 'smooth' });
+        }}
+        onSelectGroup={(type, value) => {
+          setActiveFilter({ type, value });
+          document.getElementById('timeline-section')?.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
+
+      <Timeline
+        readings={readings}
+        onSelectCard={handleSelectCardByName}
+        onSelectPerson={(name) => setActiveFilter({ type: 'person', value: name })}
+        activeFilter={activeFilter}
+        setActiveFilter={setActiveFilter}
+      />
 
       {activeCardSlug && (
         <CardProfileModal cardSlug={activeCardSlug} onClose={() => setActiveCardSlug(null)} />
+      )}
+
+      {processingReadingId && (
+        <div className="processing-overlay">
+          <div className="processing-box panel">
+            <div className="pulse-chime">🔮</div>
+            <h2>Generating AI Insights</h2>
+            <p>Scanning your cards and consulting the stars...</p>
+            <div className="processing-loader"></div>
+            <p className="status-text">{processingStatus}</p>
+          </div>
+        </div>
       )}
     </main>
   );

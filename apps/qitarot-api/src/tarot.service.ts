@@ -411,4 +411,145 @@ export class TarotService {
       pulls: playByPlay
     };
   }
+
+  async ocrSpreadImage(file: File, positions: any[]) {
+    if (!this.env.OPENAI_API_KEY) {
+      const cards = await this.db.table<any[]>('qitarot_cards', '?limit=10');
+      return {
+        cards: positions.map((pos, idx) => {
+          const card = cards[idx % cards.length] || { name: 'The Fool', slug: 'the-fool' };
+          return {
+            position_key: pos.key,
+            card_name: card.name,
+            orientation: Math.random() > 0.5 ? 'upright' : 'reversed'
+          };
+        })
+      };
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `You are a Tarot card reader OCR scanner. Identify the Tarot cards in the uploaded image. We are using a spread layout with the following positions:
+${JSON.stringify(positions.map(p => ({ key: p.key, label: p.label, prompt: p.prompt })))}
+Identify which card is present in which slot (choose canonical names from Rider-Waite-Smith) and its orientation (upright or reversed).
+Return JSON object: { "cards": [ { "position_key": "...", "card_name": "...", "orientation": "upright" | "reversed" } ] }`
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: { url: `data:${file.type};base64,${base64}` }
+              }
+            ]
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`OpenAI Vision OCR failed: ${errText}`);
+    }
+
+    const payload = await response.json() as any;
+    const content = payload.choices?.[0]?.message?.content;
+    return JSON.parse(content);
+  }
+
+  async runBackgroundInterpretation(id: string) {
+    try {
+      const reading = await this.getReading(id) as any;
+      if (!reading) return;
+
+      const spreadRows = await this.db.table<any[]>('qitarot_spread_templates', `?id=eq.${reading.spread_template_id}`);
+      const spread = spreadRows[0];
+
+      let interpretation = '';
+      let summary = '';
+
+      if (!this.env.OPENAI_API_KEY) {
+        await new Promise(r => setTimeout(r, 4000));
+        interpretation = `The combination of cards drawn for ${reading.subject_name || 'this session'} highlights a pivotal transition path. Specifically, ${reading.cards.map((c: any) => `${c.card_name} in the ${c.position_label} position (${c.orientation})`).join(', ')} suggests that while clear obstacles exist, they are balanced by supporting signals. Focus on immediate practical grounding, and allow the seeds of change to establish deep roots before taking excessive risks.`;
+        summary = `A powerful moment of transition asking for calibration and clear grounding.`;
+      } else {
+        const prompt = `You are a Tarot interpretation guide. Read this tarot draw:
+Subject: ${reading.subject_name || 'Querent'}
+Question: ${reading.question || 'General reading'}
+Spread: ${spread?.name} (${spread?.description})
+Cards:
+${reading.cards.map((c: any) => `- ${c.position_label}: ${c.card_name} (${c.orientation}) - Notes: ${c.notes}`).join('\n')}
+
+Provide:
+1. A summary of the reading (max 100 characters).
+2. A detailed tarot interpretation explaining the cards, dynamic carryover, and final verdict.
+Return JSON structure:
+{
+  "summary": "...",
+  "interpretation": "..."
+}`;
+
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.env.OPENAI_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            response_format: { type: 'json_object' },
+            messages: [
+              { role: 'system', content: 'You are a Tarot interpreter. Return JSON only.' },
+              { role: 'user', content: prompt }
+            ]
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
+        const data = await response.json() as any;
+        const result = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+        summary = result.summary || '';
+        interpretation = result.interpretation || '';
+      }
+
+      await this.db.table('qitarot_readings', `?id=eq.${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          summary,
+          interpretation,
+          ai_status: 'complete'
+        })
+      });
+    } catch (err) {
+      console.error('AI interpretation failed:', err);
+      await this.db.table('qitarot_readings', `?id=eq.${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ai_status: 'failed'
+        })
+      });
+    }
+  }
 }

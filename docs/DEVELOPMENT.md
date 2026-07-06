@@ -77,11 +77,14 @@ npm run build:api
 
 1. `GET /v1/qitarot/health`
 2. `GET /v1/qitarot/spreads`
-3. Create reading without photo.
-4. List readings.
-5. Upload photo.
-6. Trigger OCR job.
-7. Trigger interpretation job.
+3. `GET /v1/qitarot/cards`
+4. `GET /v1/qitarot/people`
+5. `GET /v1/qitarot/analytics`
+6. Create reading without photo.
+7. List readings.
+8. Upload photo.
+9. Trigger OCR job.
+10. Trigger interpretation job.
 
 ## Known MVP Gaps
 

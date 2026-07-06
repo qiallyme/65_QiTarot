@@ -64,9 +64,10 @@ Apply:
 
 ```txt
 supabase/migrations/001_qitarot.sql
+supabase/migrations/20260706100441_qitarot_catalog_people_analytics.sql
 ```
 
-The migration creates `qitarot_` tables, seeds starter spreads, enables RLS, grants the Worker `service_role` access for the Supabase Data API, and creates the `qitarot-reading-photos` storage bucket.
+The migrations create `qitarot_` tables, seed starter spreads, seed the 78-card Rider-Waite-Smith catalog with upright/reversed clinical meanings and image URLs, enable RLS, grant the Worker `service_role` access for the Supabase Data API, and create the `qitarot-reading-photos` storage bucket.
 
 ## Checks
 

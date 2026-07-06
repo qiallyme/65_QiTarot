@@ -192,6 +192,32 @@ values
     {"key":"outcome","label":"Outcome","prompt":"Likely result or integration point.","order":10,"x":82,"y":18}
   ]'::jsonb,
   40
+),
+(
+  'horseshoe',
+  'Horseshoe Spread',
+  'A classic 5-card arc showing historical trends, present triggers, obstacles, and output.',
+  5,
+  '[
+    {"key":"past","label":"Past","prompt":"Events shaping this question.","order":1,"x":15,"y":60},
+    {"key":"present","label":"Present","prompt":"The current active status.","order":2,"x":30,"y":35},
+    {"key":"hidden","label":"Hidden Influences","prompt":"Subconscious drivers or secrets.","order":3,"x":50,"y":20},
+    {"key":"obstacles","label":"Obstacles","prompt":"Friction or resistance points.","order":4,"x":70,"y":35},
+    {"key":"outcome","label":"Outcome","prompt":"Where this trend lands.","order":5,"x":85,"y":60}
+  ]'::jsonb,
+  50
+),
+(
+  'yes-no-verdict',
+  'Yes/No Verdict',
+  'Clear diagnostic spread weigh-in. Compare supporting and opposing signals for a final ruling.',
+  3,
+  '[
+    {"key":"for","label":"Supporting Factors","prompt":"Arguments or trends saying YES.","order":1,"x":25,"y":50},
+    {"key":"against","label":"Opposing Factors","prompt":"Arguments or trends saying NO.","order":2,"x":50,"y":50},
+    {"key":"verdict","label":"Verdict","prompt":"The ultimate synthesis/ruling.","order":3,"x":75,"y":50}
+  ]'::jsonb,
+  60
 )
 on conflict (slug) do update
 set name = excluded.name,

@@ -64,6 +64,29 @@ export const tarotApi = {
       body: JSON.stringify(input)
     }),
 
+  getReading: (readingId: string) =>
+    request<Reading>(`/readings/${readingId}`),
+
+  runOcrPreSave: async (file: File, positions: any[]) => {
+    const form = new FormData();
+    form.set('photo', file);
+    form.set('positions', JSON.stringify(positions));
+
+    const res = await fetch(`${BASE_PATH}/ocr`, {
+      method: 'POST',
+      headers: {
+        'X-QI-App': APP_SLUG
+      },
+      body: form
+    });
+
+    const payload = (await res.json().catch(() => null)) as ApiEnvelope<any> | null;
+    if (!res.ok || !payload?.ok) {
+      throw new Error(payload?.error?.message || `OCR analysis failed: ${res.status}`);
+    }
+    return payload.data;
+  },
+
   updateReading: (readingId: string, patch: Partial<ReadingInput>) =>
     request<Reading>(`/readings/${readingId}`, {
       method: 'PATCH',

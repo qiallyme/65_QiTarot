@@ -3,8 +3,10 @@
 ## Phase 1 - Working Data Spine
 
 - Spread templates load from Worker/Supabase.
+- Full card catalog loads from Worker/Supabase.
 - Readings save to Supabase.
 - Cards save in order.
+- Person context saves to Supabase.
 - Timeline loads from Supabase.
 - Tags and subject fields work.
 - Photo upload stores to Supabase Storage.
