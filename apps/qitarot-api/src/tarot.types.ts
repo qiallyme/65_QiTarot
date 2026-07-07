@@ -34,4 +34,5 @@ export type ReadingInput = {
   interpretation?: string;
   tags?: string[];
   cards?: ReadingCardInput[];
+  rating?: number;
 };

@@ -30,7 +30,7 @@ export function SpreadPicker({
                 <p className="card-desc">{spread.description}</p>
               </div>
               <div className="card-diagram-preview">
-                <SpreadDiagram spread={spread} />
+                <SpreadDiagram spread={spread} layoutType="flex" />
               </div>
               <button type="button" className="primary select-spread-btn">
                 Choose Spread

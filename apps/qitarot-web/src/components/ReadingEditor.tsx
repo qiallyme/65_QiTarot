@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SpreadDiagram } from './SpreadDiagram';
 import { SpreadPicker } from './SpreadPicker';
-import type { Orientation, Person, ReadingCardInput, ReadingInput, SpreadPosition, SpreadTemplate, TarotCard } from '../types';
+import type { Orientation, Person, Reading, ReadingCardInput, ReadingInput, SpreadPosition, SpreadTemplate, TarotCard } from '../types';
 import { tarotApi } from '../lib/api';
 
 function splitTags(input: string) {
@@ -24,14 +24,6 @@ function initialCards(spread: SpreadTemplate): ReadingCardInput[] {
 
 function meaningFor(card: TarotCard, orientation: Orientation) {
   return orientation === 'reversed' ? card.meaning_reversed : card.meaning_upright;
-}
-
-function labelsForGroup(card: TarotCard) {
-  if (card.arcana === 'major') return 'Major Arcana';
-  if (card.suit === 'wands') return 'Wands';
-  if (card.suit === 'cups') return 'Cups';
-  if (card.suit === 'swords') return 'Swords';
-  return 'Pentacles';
 }
 
 function cardInputFor(position: SpreadPosition, card: TarotCard, orientation: Orientation): ReadingCardInput {
@@ -63,16 +55,17 @@ export function ReadingEditor({
   spreads,
   cardCatalog,
   people,
-  onSave,
-  saving
+  onCompleteReading,
+  onNavigateTab
 }: {
   spreads: SpreadTemplate[];
   cardCatalog: TarotCard[];
   people: Person[];
-  saving: boolean;
-  onSave: (reading: ReadingInput, photo?: File) => Promise<void>;
+  onCompleteReading: (reading: Reading) => void;
+  onNavigateTab: (tab: 'draw' | 'signals' | 'history' | 'system') => void;
 }) {
-  // Global Wizard Step: 1 = Pick Spread, 2 = Shuffle & Pull, 3 = Photo, 4 = Confirm Cards, 5 = Interpretation, 6 = Save/Discard
+  // Wizard Steps:
+  // 1 = Pick Spread, 2 = Shuffle & Pull, 3 = Photo, 4 = Confirm Cards, 5 = Final Review, 6 = Interpretation, 7 = Success
   const [step, setStep] = useState(1);
   const [spread, setSpread] = useState<SpreadTemplate>(() => spreads[0] || FALLBACK_SPREADS[0]);
 
@@ -84,9 +77,16 @@ export function ReadingEditor({
   const [tags, setTags] = useState('');
   const [summary, setSummary] = useState('');
   const [interpretation, setInterpretation] = useState('');
+  const [rating, setRating] = useState<number>(5);
   const [photo, setPhoto] = useState<File | undefined>();
   const [cards, setCards] = useState<ReadingCardInput[]>(() => initialCards(spread));
   const [selectedSlotKey, setSelectedSlotKey] = useState('');
+
+  // Active saved reading reference (for step 6 rating/edit finalize)
+  const [activeReadingId, setActiveReadingId] = useState<string | null>(null);
+
+  // Notes configuration states
+  const [showNotesKeys, setShowNotesKeys] = useState<Record<string, boolean>>({});
 
   // UI state for search dropdowns in Confirm Cards step
   const [activeSearchKey, setActiveSearchKey] = useState<string | null>(null);
@@ -132,7 +132,6 @@ export function ReadingEditor({
 
   const cardById = useMemo(() => new Map(cardCatalog.map((card) => [card.id, card])), [cardCatalog]);
   const spreadPositionByKey = useMemo(() => new Map(spread.positions.map((position) => [position.key, position])), [spread.positions]);
-
   const selectedPerson = peopleByName.get(subjectName.trim().toLowerCase());
 
   const filteredCards = useMemo(() => {
@@ -165,9 +164,10 @@ export function ReadingEditor({
       summary: summary || undefined,
       interpretation: interpretation || undefined,
       tags: splitTags(tags),
-      cards
+      cards,
+      rating: rating
     };
-  }, [cards, interpretation, question, readerName, selectedPerson?.id, spread.id, subjectName, summary, tags]);
+  }, [cards, interpretation, question, readerName, selectedPerson?.id, spread.id, subjectName, summary, tags, rating]);
 
   // Rotate Oracle messages while generating interpretation
   useEffect(() => {
@@ -234,18 +234,8 @@ export function ReadingEditor({
     setCards((current) => current.map((row) => (row.position_key === positionKey ? { ...row, notes } : row)));
   };
 
-  const triggerInterpretationRequest = async () => {
-    setGeneratingInterpretation(true);
-    try {
-      const result = await tarotApi.generateDraftInterpretation(readingInput);
-      if (result.interpretation) setInterpretation(result.interpretation);
-      if (result.summary) setSummary(result.summary);
-    } catch (err) {
-      console.warn('AI interpretation request failed:', err);
-    } finally {
-      setGeneratingInterpretation(false);
-      setStep(5);
-    }
+  const toggleNotesInput = (positionKey: string) => {
+    setShowNotesKeys(prev => ({ ...prev, [positionKey]: !prev[positionKey] }));
   };
 
   async function handlePhotoChange(file?: File) {
@@ -281,33 +271,103 @@ export function ReadingEditor({
     setTags(next.join(', '));
   };
 
-  const handleDiscard = () => {
+  const handleDiscard = async () => {
+    if (activeReadingId) {
+      try {
+        await tarotApi.deleteReading(activeReadingId);
+      } catch (err) {
+        console.warn('Failed to delete discarded reading:', err);
+      }
+    }
+    resetState();
+  };
+
+  const resetState = () => {
     setStep(1);
     setPhoto(undefined);
     setQuestion('');
     setTags('');
     setSummary('');
     setInterpretation('');
+    setRating(5);
+    setActiveReadingId(null);
     setCards(initialCards(spread));
   };
 
-  const handleSaveReading = async () => {
-    await onSave(readingInput, photo);
-    handleDiscard();
+  const handleInterpretReading = async () => {
+    setGeneratingInterpretation(true);
+    setStep(6); // Show the oracle loading screen
+
+    try {
+      // 1. Create reading in database
+      const created = await tarotApi.createReading(readingInput);
+      
+      // 2. Upload photo if present
+      const finalReading = photo ? await tarotApi.uploadPhoto(created.id, photo) : created;
+      setActiveReadingId(finalReading.id);
+
+      // 3. Start polling for interpretation completion
+      let attempts = 0;
+      const interval = setInterval(async () => {
+        attempts++;
+        if (attempts > 25) {
+          clearInterval(interval);
+          setGeneratingInterpretation(false);
+          alert('AI interpretation is taking longer than expected. Saved as draft.');
+          return;
+        }
+
+        try {
+          const current = await tarotApi.getReading(finalReading.id);
+          if (current.ai_status === 'complete' || current.ai_status === 'failed') {
+            clearInterval(interval);
+            setInterpretation(current.interpretation || '');
+            setSummary(current.summary || '');
+            setGeneratingInterpretation(false);
+          }
+        } catch (err) {
+          console.warn('Polling error:', err);
+        }
+      }, 2000);
+
+    } catch (err) {
+      console.error('Failed to create interpretation reading:', err);
+      setGeneratingInterpretation(false);
+      setStep(5);
+    }
+  };
+
+  const handleFinalizeSave = async () => {
+    if (!activeReadingId) return;
+
+    try {
+      const updated = await tarotApi.updateReading(activeReadingId, {
+        rating,
+        tags: splitTags(tags),
+        summary,
+        interpretation
+      });
+      onCompleteReading(updated);
+      setStep(7); // Show Success Screen
+    } catch (err) {
+      console.error('Failed to save reading details:', err);
+    }
   };
 
   return (
     <div className="guided-flow-container">
       {/* Wizard Progress Header */}
-      <div className="guided-progressbar">
-        {[1, 2, 3, 4, 5, 6].map((i) => (
-          <span
-            key={i}
-            className={`progressbar-dot ${i === step ? 'active' : ''} ${i < step ? 'completed' : ''}`}
-            onClick={() => step > i && setStep(i)}
-          />
-        ))}
-      </div>
+      {step < 7 && (
+        <div className="guided-progressbar">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <span
+              key={i}
+              className={`progressbar-dot ${i === step ? 'active' : ''} ${i < step ? 'completed' : ''}`}
+              onClick={() => step > i && setStep(i)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Step 1: Pick a Spread */}
       {step === 1 && (
@@ -323,16 +383,16 @@ export function ReadingEditor({
       {/* Step 2: Shuffle and Pull */}
       {step === 2 && (
         <div className="flow-step step-shuffle-pull panel stack">
-          <div className="panel-heading">
+          <div className="panel-heading centered-heading">
             <p className="eyebrow">Step 2</p>
             <h2>Shuffle & Pull</h2>
           </div>
-          <p className="step-guide">
-            Shuffle your deck thoroughly, focus on your question, and pull the cards matching the layout below.
+          <p className="step-guide centered-text">
+            Shuffle your deck, focus on your question, and draw card counts matching the spread.
           </p>
 
           <div className="spread-preview-centered">
-            <SpreadDiagram spread={spread} />
+            <SpreadDiagram spread={spread} layoutType="flex" />
           </div>
 
           <div className="form-grid">
@@ -357,7 +417,7 @@ export function ReadingEditor({
                     setSubjectName('');
                   }}
                 >
-                  Other
+                  Other Subject
                 </button>
               </div>
             </div>
@@ -375,16 +435,16 @@ export function ReadingEditor({
             )}
 
             <label className="wide">
-              Reader Display Name
+              Reader Name
               <input
                 value={readerName}
                 onChange={(event) => setReaderName(event.target.value)}
-                placeholder="Optional"
+                placeholder="Optional reader name"
               />
             </label>
 
             <label className="wide">
-              Question / situation
+              Question / Situation
               <textarea
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
@@ -398,7 +458,7 @@ export function ReadingEditor({
               ← Back
             </button>
             <button type="button" className="primary" onClick={() => setStep(3)}>
-              Next: Snap Photo →
+              Next: Add Photo →
             </button>
           </div>
         </div>
@@ -407,12 +467,12 @@ export function ReadingEditor({
       {/* Step 3: Snap or Import Photo */}
       {step === 3 && (
         <div className="flow-step step-snap-photo panel stack">
-          <div className="panel-heading">
+          <div className="panel-heading centered-heading">
             <p className="eyebrow">Step 3</p>
-            <h2>Capture Spread Photo</h2>
+            <h2>Spread Photo</h2>
           </div>
-          <p className="step-guide">
-            Capture or import a photo of your laid out cards. Aligning cards neatly improves automated recognition accuracy.
+          <p className="step-guide centered-text">
+            Upload or capture a photo of your cards. Visual scanner will match card texts automatically.
           </p>
 
           <div className="photo-capture-box">
@@ -429,7 +489,7 @@ export function ReadingEditor({
             {analyzingPhoto && (
               <div className="ocr-analyzing-indicator">
                 <div className="processing-loader"></div>
-                <p>Analyzing card positions and shapes...</p>
+                <p>Reading card titles and layouts...</p>
               </div>
             )}
 
@@ -448,13 +508,13 @@ export function ReadingEditor({
               ← Back
             </button>
             <button type="button" className="primary" onClick={() => setStep(4)}>
-              Skip & Manual Confirm →
+              Skip & Manual Choose →
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 4: Confirm Cards */}
+      {/* Step 4: Confirm Cards (Split Verification Panel) */}
       {step === 4 && (
         <div className="flow-step step-confirm-cards panel stack">
           <div className="panel-heading">
@@ -462,64 +522,64 @@ export function ReadingEditor({
             <h2>Confirm Cards</h2>
           </div>
           <p className="step-guide">
-            Confirm estimated cards at each position. Search to pick manually if incorrect.
+            Confirm detected cards on each slot. Click card to edit.
           </p>
 
-          <div className="positions-confirm-list">
-            {spread.positions.map((pos) => {
-              const card = cards.find(c => c.position_key === pos.key);
-              const isSlotActive = selectedSlotKey === pos.key;
-              return (
-                <div
-                  key={pos.key}
-                  className={`confirm-position-item ${isSlotActive ? 'active' : ''}`}
-                >
-                  <div className="item-summary-header" onClick={() => setSelectedSlotKey(pos.key)}>
-                    <div className="pos-badge-label">
-                      <span className="pos-num-indicator">{pos.order}</span>
-                      <strong>{pos.label}</strong>
+          {/* Split Panel Area */}
+          <div className="confirm-split-container">
+            {photoPreviewUrl && (
+              <div className="uploaded-photo-preview-panel">
+                <img src={photoPreviewUrl} alt="Real spread layout" />
+              </div>
+            )}
+            <div className="reconstructed-diagram-panel">
+              <SpreadDiagram
+                spread={spread}
+                placedCards={cards}
+                selectedSlotKey={selectedSlotKey}
+                onSelectSlot={setSelectedSlotKey}
+                layoutType="flex"
+              />
+            </div>
+          </div>
+
+          {/* Selected Slot Interactive Editor */}
+          {selectedSlotKey && (
+            <div className="selected-slot-verification-editor panel">
+              {(() => {
+                const pos = spreadPositionByKey.get(selectedSlotKey);
+                const card = cards.find((c) => c.position_key === selectedSlotKey);
+                if (!pos) return null;
+                const isNotesActive = showNotesKeys[pos.key] || false;
+                return (
+                  <div className="stack" style={{ gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h4>Slot: {pos.label} ({pos.order}/{spread.card_count})</h4>
+                      <button
+                        type="button"
+                        className={`orientation-toggle-btn ${card?.orientation}`}
+                        onClick={() => toggleOrientation(pos.key)}
+                      >
+                        {card?.orientation === 'reversed' ? '🔄 Reversed' : '☀️ Upright'}
+                      </button>
                     </div>
-                    <div className="pos-card-badge-row">
-                      <span className={`pos-card-name ${card?.card_name ? 'filled' : 'empty'}`}>
-                        {card?.card_name || 'Not Chosen'}
-                      </span>
-                      {card?.card_name && (
-                        <span className="orientation-tag">
-                          {card.orientation === 'reversed' ? '🔄' : '☀️'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                    <p className="hint-text" style={{ margin: '0' }}>{pos.prompt}</p>
 
-                  {isSlotActive && (
-                    <div className="item-detail-editor">
-                      <p className="hint-text">{pos.prompt}</p>
-                      
-                      <div className="confirm-fields-row">
-                        <button
-                          type="button"
-                          className={`orientation-toggle ${card?.orientation}`}
-                          onClick={() => toggleOrientation(pos.key)}
-                        >
-                          {card?.orientation === 'reversed' ? '🔄 Reversed' : '☀️ Upright'}
-                        </button>
-
-                        <input
-                          type="text"
-                          placeholder="Search card name..."
-                          value={activeSearchKey === pos.key ? searchQueries[pos.key] || '' : card?.card_name || ''}
-                          onFocus={() => {
-                            setActiveSearchKey(pos.key);
-                            setCardQuery(card?.card_name || '');
-                          }}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setSearchQueries(prev => ({ ...prev, [pos.key]: val }));
-                            setCardQuery(val);
-                          }}
-                        />
-                      </div>
-
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        placeholder="Search card catalog..."
+                        value={activeSearchKey === pos.key ? searchQueries[pos.key] || '' : card?.card_name || ''}
+                        onFocus={() => {
+                          setActiveSearchKey(pos.key);
+                          setCardQuery(card?.card_name || '');
+                        }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSearchQueries((prev) => ({ ...prev, [pos.key]: val }));
+                          setCardQuery(val);
+                        }}
+                      />
                       {activeSearchKey === pos.key && cardQuery.trim() && (
                         <div className="inline-card-results">
                           {filteredCards.slice(0, 5).map((catCard) => (
@@ -529,7 +589,7 @@ export function ReadingEditor({
                               key={catCard.id}
                               onClick={() => {
                                 setCardAtPosition(pos.key, catCard);
-                                setSearchQueries(prev => ({ ...prev, [pos.key]: catCard.name }));
+                                setSearchQueries((prev) => ({ ...prev, [pos.key]: catCard.name }));
                                 setActiveSearchKey(null);
                                 setCardQuery('');
                               }}
@@ -539,18 +599,31 @@ export function ReadingEditor({
                           ))}
                         </div>
                       )}
+                    </div>
 
+                    <div className="optional-notes-toggler-row">
+                      <label className="checkbox-notes-label">
+                        <input
+                          type="checkbox"
+                          checked={isNotesActive}
+                          onChange={() => toggleNotesInput(pos.key)}
+                        />
+                        Add interpretive slot notes
+                      </label>
+                    </div>
+
+                    {isNotesActive && (
                       <textarea
                         value={card?.notes || ''}
                         onChange={(e) => updateNotes(pos.key, e.target.value)}
-                        placeholder="Add reader specific notes or intuitive insights..."
+                        placeholder="Add reader specific insights for this card..."
                       />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           <div className="step-actions">
             <button type="button" className="secondary" onClick={() => setStep(3)}>
@@ -559,17 +632,72 @@ export function ReadingEditor({
             <button
               type="button"
               className="primary"
-              disabled={!cards.some(c => c.card_name)}
-              onClick={triggerInterpretationRequest}
+              disabled={!cards.some((c) => c.card_name)}
+              onClick={() => setStep(5)}
             >
-              Analyze Reading →
+              Confirm Cards →
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 5: Interpretation + Summary */}
+      {/* Step 5: Final Review */}
       {step === 5 && (
+        <div className="flow-step step-final-review panel stack">
+          <div className="panel-heading">
+            <p className="eyebrow">Step 5</p>
+            <h2>Final Review</h2>
+          </div>
+          <p className="step-guide">
+            Review your digital spread layout and question context. Clicking Interpret Reading will analyze the cards.
+          </p>
+
+          <div className="review-digital-reconstruction">
+            <SpreadDiagram spread={spread} placedCards={cards} layoutType="flex" />
+          </div>
+
+          <div className="final-summary-card">
+            <div className="summary-section-row">
+              <span>Spread:</span>
+              <strong>{spread.name}</strong>
+            </div>
+            <div className="summary-section-row">
+              <span>Subject:</span>
+              <strong>{subjectName}</strong>
+            </div>
+            <div className="summary-section-row">
+              <span>Reader:</span>
+              <strong>{readerName || 'Self'}</strong>
+            </div>
+            <div className="summary-section-row">
+              <span>Question:</span>
+              <strong>{question || 'General Reading'}</strong>
+            </div>
+            <div className="summary-section-row">
+              <span>Confirmed Cards:</span>
+              <div className="confirmed-cards-pills">
+                {cards.filter(c => c.card_name).map(c => (
+                  <span key={c.position_key} className="confirmed-pill">
+                    {c.position_label}: {c.card_name} ({c.orientation})
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="step-actions">
+            <button type="button" className="secondary" onClick={() => setStep(4)}>
+              ← Back
+            </button>
+            <button type="button" className="primary" onClick={handleInterpretReading}>
+              Interpret Reading →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 6: Interpretation Screen (with Cyclic Loading State) */}
+      {step === 6 && (
         <div className="flow-step step-interpretation panel stack">
           {generatingInterpretation ? (
             <div className="oracle-loading-state">
@@ -581,7 +709,7 @@ export function ReadingEditor({
           ) : (
             <>
               <div className="panel-heading">
-                <p className="eyebrow">Step 5</p>
+                <p className="eyebrow">Step 6</p>
                 <h2>Interpretation Insights</h2>
               </div>
 
@@ -597,16 +725,32 @@ export function ReadingEditor({
                 </label>
 
                 <label className="wide">
-                  Summary (In simple terms)
+                  Summary takeaway
                   <textarea
                     value={summary}
                     onChange={(event) => setSummary(event.target.value)}
-                    placeholder="Simple plain-English summary..."
+                    placeholder="Takeaway summary..."
                   />
                 </label>
 
+                <div className="wide rating-stars-selection">
+                  <label>Rate this Reading</label>
+                  <div className="star-rating-chips">
+                    {[1, 2, 3, 4, 5].map((stars) => (
+                      <button
+                        type="button"
+                        key={stars}
+                        className={`star-chip-btn ${rating >= stars ? 'selected' : ''}`}
+                        onClick={() => setRating(stars)}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="wide suggested-tags-box">
-                  <label>Suggested Tags</label>
+                  <label>Reflection Tags</label>
                   <div className="chips-container">
                     {splitTags(tags).map(t => (
                       <span className="chip" key={t}>
@@ -634,18 +778,18 @@ export function ReadingEditor({
                 </div>
               </div>
 
-              <div className="retry-interpretation-row">
-                <button type="button" className="secondary button-link" onClick={triggerInterpretationRequest}>
-                  🔄 Retry Interpretation
+              <div className="step-actions vertical-actions">
+                <button type="button" className="primary save-btn" onClick={handleFinalizeSave}>
+                  ✓ Save to Journal
+                </button>
+                <button type="button" className="danger discard-btn" onClick={handleDiscard}>
+                  ✕ Discard Reading
                 </button>
               </div>
 
               <div className="step-actions">
                 <button type="button" className="secondary" onClick={() => setStep(4)}>
-                  ← Back
-                </button>
-                <button type="button" className="primary" onClick={() => setStep(6)}>
-                  Next: Complete Reading →
+                  ← Edit Cards
                 </button>
               </div>
             </>
@@ -653,59 +797,42 @@ export function ReadingEditor({
         </div>
       )}
 
-      {/* Step 6: Save or Discard */}
-      {step === 6 && (
-        <div className="flow-step step-complete panel stack">
-          <div className="panel-heading">
-            <p className="eyebrow">Step 6</p>
-            <h2>Save or Discard</h2>
-          </div>
+      {/* Step 7: Success Screen */}
+      {step === 7 && (
+        <div className="flow-step step-success-journal panel stack text-center">
+          <div className="success-icon-banner">✅</div>
+          <h2>Saved to Journal!</h2>
           <p className="step-guide">
-            Confirm details below to record this reading in your journal. Discarding will completely erase current draft.
+            Your reading has been successfully recorded in your history logs.
           </p>
 
-          <div className="final-summary-card">
-            <div className="summary-section-row">
-              <span>Spread:</span>
-              <strong>{spread.name}</strong>
-            </div>
-            <div className="summary-section-row">
-              <span>Subject:</span>
-              <strong>{subjectName}</strong>
-            </div>
-            <div className="summary-section-row">
-              <span>Cards Confirmed:</span>
-              <div className="confirmed-cards-pills">
-                {cards.filter(c => c.card_name).map(c => (
-                  <span key={c.position_key} className="confirmed-pill">
-                    {c.position_label}: {c.card_name} ({c.orientation})
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="step-actions vertical-actions">
+          <div className="success-action-buttons stack">
             <button
               type="button"
-              className="primary save-btn"
-              disabled={saving}
-              onClick={handleSaveReading}
+              className="primary"
+              onClick={() => {
+                onNavigateTab('history');
+                resetState();
+              }}
             >
-              {saving ? 'Saving to Journal...' : '✓ Save to Journal'}
+              View Journal History
             </button>
             <button
               type="button"
-              className="danger discard-btn"
-              onClick={handleDiscard}
+              className="secondary"
+              onClick={resetState}
             >
-              ✕ Discard Reading
+              New Reading
             </button>
-          </div>
-
-          <div className="step-actions">
-            <button type="button" className="secondary" onClick={() => setStep(5)}>
-              ← Back
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                onNavigateTab('draw');
+                resetState();
+              }}
+            >
+              Back to Home
             </button>
           </div>
         </div>

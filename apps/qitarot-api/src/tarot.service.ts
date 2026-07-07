@@ -142,6 +142,7 @@ export class TarotService {
         summary: input.summary || null,
         interpretation: input.interpretation || null,
         tags,
+        rating: input.rating || null,
         ai_status: 'not_started'
       })
     });
@@ -186,7 +187,7 @@ export class TarotService {
 
   async updateReading(id: string, patch: Partial<ReadingInput>) {
     const body: Record<string, unknown> = {};
-    for (const key of ['subject_name', 'reader_name', 'question', 'summary', 'interpretation', 'spread_template_id', 'person_id'] as const) {
+    for (const key of ['subject_name', 'reader_name', 'question', 'summary', 'interpretation', 'spread_template_id', 'person_id', 'rating'] as const) {
       if (patch[key] !== undefined) body[key] = patch[key] || null;
     }
     if (patch.person_name) {
@@ -612,5 +613,61 @@ Return JSON structure:
     }
 
     return { summary, interpretation };
+  }
+
+  async deleteReading(id: string) {
+    return this.db.table('qitarot_readings', `?id=eq.${id}`, {
+      method: 'DELETE'
+    });
+  }
+
+  async analyzeHistoryChat(message: string, url: URL) {
+    const readings = await this.listReadings(new URL(`${url.origin}/v1/qitarot/readings?limit=25`)) as any[];
+    
+    const formattedHistory = readings.map((r, idx) => {
+      const cards = (r.cards || []).map((c: any) => `${c.position_label}: ${c.card_name} (${c.orientation})`).join(', ');
+      return `Reading ${idx + 1} (${new Date(r.created_at).toLocaleDateString()}):
+Subject: ${r.subject_name || 'Querent'}
+Question: ${r.question || 'General'}
+Cards: ${cards}
+Summary: ${r.summary || 'None'}
+Interpretation: ${r.interpretation || 'None'}`;
+    }).join('\n\n');
+
+    if (!this.env.OPENAI_API_KEY) {
+      return {
+        answer: `I see you have logged **${readings.length} readings** in your history logs.\n\nBased on your history, there is a recurring energetic alignment. To get personalized analysis, please supply your OpenAI API key in system configurations.`
+      };
+    }
+
+    const systemPrompt = `You are a Tarot Analyst AI. You analyze a user's tarot reading history to answer their questions about patterns, frequent cards, themes, or insights.
+Here is the user's recent reading history (most recent first):
+${formattedHistory}
+
+Answer the user's question accurately, seriously, and insightfully based on this history. Mention specific cards, dates, or questions from the logs when relevant. Keep your response in structured markdown with bold titles.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = await response.json() as any;
+    return {
+      answer: data.choices?.[0]?.message?.content || 'I could not process the history analysis.'
+    };
   }
 }

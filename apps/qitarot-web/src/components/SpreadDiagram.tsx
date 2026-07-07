@@ -7,7 +7,8 @@ export function SpreadDiagram({
   onSelectSlot,
   onCardDrop,
   onToggleOrientation,
-  backgroundImageUrl
+  backgroundImageUrl,
+  layoutType = 'absolute'
 }: {
   spread: SpreadTemplate;
   placedCards?: ReadingCardInput[];
@@ -16,6 +17,7 @@ export function SpreadDiagram({
   onCardDrop?: (positionKey: string, cardId: string) => void;
   onToggleOrientation?: (positionKey: string) => void;
   backgroundImageUrl?: string;
+  layoutType?: 'absolute' | 'flex';
 }) {
   const cardsByPosition = new Map((placedCards || []).map((card) => [card.position_key, card]));
   const style = backgroundImageUrl
@@ -24,7 +26,7 @@ export function SpreadDiagram({
 
   return (
     <div
-      className={`spread-diagram ${backgroundImageUrl ? 'has-bg-overlay' : ''}`}
+      className={`spread-diagram ${layoutType === 'flex' ? 'flex-layout' : ''} ${backgroundImageUrl ? 'has-bg-overlay' : ''}`}
       style={style}
       aria-label={`${spread.name} diagram`}
     >

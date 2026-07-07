@@ -66,6 +66,11 @@ export async function handleTarotRoute(request: Request, env: Env, _ctx: Executi
       return json(await service.generateDraftInterpretation(body), env);
     }
 
+    if (url.pathname === '/v1/qitarot/chat' && request.method === 'POST') {
+      const body = await readJson<{ message: string }>(request);
+      return json(await service.analyzeHistoryChat(body.message, url), env);
+    }
+
     if (url.pathname === '/v1/qitarot/readings' && request.method === 'GET') {
       return json(await service.listReadings(url), env);
     }
@@ -89,6 +94,10 @@ export async function handleTarotRoute(request: Request, env: Env, _ctx: Executi
     if (readingId && url.pathname === `/v1/qitarot/readings/${readingId}` && request.method === 'PATCH') {
       const body = await readJson<Partial<ReadingInput>>(request);
       return json(await service.updateReading(readingId, body), env);
+    }
+
+    if (readingId && url.pathname === `/v1/qitarot/readings/${readingId}` && request.method === 'DELETE') {
+      return json(await service.deleteReading(readingId), env);
     }
 
     if (readingId && url.pathname === `/v1/qitarot/readings/${readingId}/photo` && request.method === 'POST') {

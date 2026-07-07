@@ -134,5 +134,14 @@ export const tarotApi = {
     request<{ summary: string; interpretation: string }>('/interpret-draft', {
       method: 'POST',
       body: JSON.stringify(input)
+    }),
+
+  deleteReading: (readingId: string) =>
+    request<any>(`/readings/${readingId}`, { method: 'DELETE' }),
+
+  chatHistory: (message: string) =>
+    request<{ answer: string }>('/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message })
     })
 };

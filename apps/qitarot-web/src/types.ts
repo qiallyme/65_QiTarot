@@ -51,6 +51,7 @@ export type ReadingInput = {
   interpretation?: string;
   tags: string[];
   cards: ReadingCardInput[];
+  rating?: number;
 };
 
 export type Reading = {
@@ -72,6 +73,7 @@ export type Reading = {
   raw_ocr?: unknown;
   ai_status?: 'not_started' | 'queued' | 'running' | 'complete' | 'failed';
   cards: ReadingCard[];
+  rating?: number;
 };
 
 export type TarotCard = {
