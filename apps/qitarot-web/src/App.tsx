@@ -29,6 +29,10 @@ export function App() {
   const [processingStatus, setProcessingStatus] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'draw' | 'signals' | 'history' | 'system'>('draw');
 
+  // Identity Profile Defaults
+  const [defaultReaderName, setDefaultReaderName] = useState(() => localStorage.getItem('qitarot_reader_name') || 'Reader');
+  const [defaultSelfLabel, setDefaultSelfLabel] = useState(() => localStorage.getItem('qitarot_self_label') || 'Myself');
+
   const selectedSpread = useMemo(
     () => spreads.find((spread) => spread.id === selectedSpreadId) || spreads[0],
     [selectedSpreadId, spreads]
@@ -197,7 +201,7 @@ export function App() {
           <div className={`status-dot ${apiStatus}`} title={`API is ${apiStatus}`} />
         </div>
         <p className="subtitle">
-          Intuitive tarot workspace powered by qitarot-api and background AI.
+          Guided mobile tarot workspace.
         </p>
 
         {notice && <div className="notice">{notice}</div>}
@@ -214,29 +218,13 @@ export function App() {
       {/* Conditional Rendering of tab views */}
       {activeTab === 'draw' && (
         <div className="tab-view-draw">
-          <SpreadPicker spreads={spreads} selectedId={selectedSpread?.id} onSelect={(spread) => setSelectedSpreadId(spread.id)} />
-
-          {selectedSpread && (
-            <section className="panel two-col">
-              <div>
-                <p className="eyebrow">Layout description</p>
-                <h2>{selectedSpread.name}</h2>
-                <p>{selectedSpread.description}</p>
-              </div>
-              <SpreadDiagram spread={selectedSpread} />
-            </section>
-          )}
-
-          {selectedSpread && (
-            <ReadingEditor
-              key={selectedSpread.id}
-              spread={selectedSpread}
-              cardCatalog={cardCatalog}
-              people={people}
-              saving={saving}
-              onSave={handleSave}
-            />
-          )}
+          <ReadingEditor
+            spreads={spreads}
+            cardCatalog={cardCatalog}
+            people={people}
+            saving={saving}
+            onSave={handleSave}
+          />
         </div>
       )}
 
@@ -271,7 +259,38 @@ export function App() {
 
       {activeTab === 'system' && (
         <div className="tab-view-system panel stack">
-          <h2>System Information</h2>
+          <h2>System & Profile Settings</h2>
+
+          <div className="identity-settings-box">
+            <h3>Profile Defaults</h3>
+            <div className="form-group" style={{ marginBottom: '12px', display: 'grid', gap: '6px' }}>
+              <label>Default Reader Display Name</label>
+              <input
+                type="text"
+                value={defaultReaderName}
+                onChange={(e) => {
+                  setDefaultReaderName(e.target.value);
+                  localStorage.setItem('qitarot_reader_name', e.target.value);
+                }}
+                placeholder="e.g. Reader"
+              />
+            </div>
+            <div className="form-group" style={{ display: 'grid', gap: '6px' }}>
+              <label>Default Self/Subject Label</label>
+              <input
+                type="text"
+                value={defaultSelfLabel}
+                onChange={(e) => {
+                  setDefaultSelfLabel(e.target.value);
+                  localStorage.setItem('qitarot_self_label', e.target.value);
+                }}
+                placeholder="e.g. Myself"
+              />
+            </div>
+          </div>
+
+          <hr style={{ border: 'none', borderBottom: '1px solid var(--line)', margin: '16px 0' }} />
+
           <div className="system-status-row">
             <span>Connection Status:</span>
             <strong className={`status-text-${apiStatus}`}>{apiStatus.toUpperCase()}</strong>
