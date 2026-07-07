@@ -69,6 +69,8 @@ export class TarotService {
     params.set('select', '*,person:qitarot_people(*),cards:qitarot_reading_cards(*,card:qitarot_cards(*))');
     params.set('order', 'created_at.desc');
     params.set('limit', url.searchParams.get('limit') || '50');
+    // Filter to only include finalized (rated) readings
+    params.set('rating', 'not.is.null');
 
     const subject = url.searchParams.get('subject');
     const personId = url.searchParams.get('person_id');
@@ -347,18 +349,19 @@ export class TarotService {
     const card = cardRows[0];
     if (!card) throw new Error('Card not found');
 
-    const allReadings = await this.db.table<Array<{ id: string }>>(
+    const allReadings = await this.db.table<Array<{ id: string; rating?: number | null }>>(
       'qitarot_readings',
-      `?select=id`
+      `?select=id,rating`
     );
-    const totalReadings = allReadings.length;
+    const totalReadings = allReadings.filter(r => r.rating !== null).length;
 
     const pulls = await this.db.table<any[]>(
       'qitarot_reading_cards',
       `?select=*,reading:qitarot_readings(*,person:qitarot_people(*))&card_id=eq.${card.id}`
     );
 
-    const totalPulls = pulls.length;
+    const validPulls = pulls.filter(pull => pull.reading && pull.reading.rating !== null);
+    const totalPulls = validPulls.length;
     let uprightCount = 0;
     let reversedCount = 0;
     let sumOrderIndex = 0;
@@ -366,7 +369,7 @@ export class TarotService {
 
     const playByPlay = [];
 
-    for (const pull of pulls) {
+    for (const pull of validPulls) {
       if (pull.orientation === 'reversed') reversedCount++;
       else uprightCount++;
       sumOrderIndex += pull.order_index || 0;
@@ -722,4 +725,22 @@ Answer the user's question accurately, seriously, and insightfully based on this
       answer: data.choices?.[0]?.message?.content || 'I could not process the history analysis.'
     };
   }
+
+  async getPersistenceDebug() {
+    const readings = await this.db.table<any[]>('qitarot_readings', '?select=id');
+    const cards = await this.db.table<any[]>('qitarot_reading_cards', '?select=id');
+    const templates = await this.db.table<any[]>('qitarot_spread_templates', '?select=id');
+    const jobs = await this.db.table<any[]>('qitarot_ai_jobs', '?select=id');
+
+    return {
+      ok: true,
+      tables: {
+        qitarot_spread_templates: templates?.length || 0,
+        qitarot_readings: readings?.length || 0,
+        qitarot_reading_cards: cards?.length || 0,
+        qitarot_ai_jobs: jobs?.length || 0
+      }
+    };
+  }
 }
+

@@ -26,6 +26,10 @@ export async function handleTarotRoute(request: Request, env: Env, _ctx: Executi
 
     const service = new TarotService(env);
 
+    if (url.pathname === '/v1/qitarot/debug/persistence' && request.method === 'GET') {
+      return json(await service.getPersistenceDebug(), env);
+    }
+
     if (url.pathname === '/v1/qitarot/spreads' && request.method === 'GET') {
       return json(await service.listSpreads(), env);
     }
@@ -112,7 +116,9 @@ export async function handleTarotRoute(request: Request, env: Env, _ctx: Executi
     }
 
     if (readingId && url.pathname === `/v1/qitarot/readings/${readingId}/interpret` && request.method === 'POST') {
-      return json(await service.requestInterpretation(readingId), env, 202);
+      const result = await service.requestInterpretation(readingId);
+      _ctx.waitUntil(service.runBackgroundInterpretation(readingId));
+      return json(result, env, 202);
     }
 
     if (url.pathname === '/v1/qitarot/correlations' && request.method === 'GET') {
