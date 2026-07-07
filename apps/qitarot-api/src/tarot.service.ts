@@ -487,22 +487,48 @@ Return JSON object: { "cards": [ { "position_key": "...", "card_name": "...", "o
 
       let interpretation = '';
       let summary = '';
+      const sortedCards = [...reading.cards].sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
 
       if (!this.env.OPENAI_API_KEY) {
         await new Promise(r => setTimeout(r, 4000));
-        interpretation = `The combination of cards drawn for ${reading.subject_name || 'this session'} highlights a pivotal transition path. Specifically, ${reading.cards.map((c: any) => `${c.card_name} in the ${c.position_label} position (${c.orientation})`).join(', ')} suggests that while clear obstacles exist, they are balanced by supporting signals. Focus on immediate practical grounding, and allow the seeds of change to establish deep roots before taking excessive risks.`;
-        summary = `A powerful moment of transition asking for calibration and clear grounding.`;
+        interpretation = `This reading was opened for ${reading.subject_name || 'Querent'}. The question brought forward was: "${reading.question || 'General inquiry'}".
+
+This spread points to a moment of alignment, where new options are taking shape and challenging old habits.
+
+Themes: transition, self-trust, timing
+
+${sortedCards.map((c: any) => `In position "${c.position_label}", representing ${c.position_label}, you pulled ${c.card_name} (${c.orientation}). This suggests that the energy here is in a state of ${c.orientation === 'reversed' ? 'internal recalculation' : 'active expression'}, asking you to pay attention to details and intuitive prompts.`).join('\n\n')}
+
+So what this tells us is that you are standing at a threshold where simple changes in perspective can produce substantial shifts in outcome.
+
+In plain English: Focus on practical grounding, do not rush decisions, and let options settle before committing.
+
+Sit with what resonates, leave what does not, and return to this reading when the pattern starts showing itself.`;
+        summary = `A moment of adjustment asking for clear calibration and practical grounding.`;
       } else {
         const prompt = `You are a Tarot interpretation guide. Read this tarot draw:
 Subject: ${reading.subject_name || 'Querent'}
 Question: ${reading.question || 'General reading'}
 Spread: ${spread?.name} (${spread?.description})
-Cards:
-${reading.cards.map((c: any) => `- ${c.position_label}: ${c.card_name} (${c.orientation}) - Notes: ${c.notes}`).join('\n')}
+Cards in pull order:
+${sortedCards.map((c: any) => `- Position "${c.position_label}" (representing: ${c.position_label}): ${c.card_name} (${c.orientation}) - Reader Notes: ${c.notes || ''}`).join('\n')}
 
 Provide:
-1. A summary of the reading (max 100 characters).
+1. A summary of the reading (max 100 characters, in plain English).
 2. A detailed tarot interpretation explaining the cards, dynamic carryover, and final verdict.
+
+Format the interpretation exactly as a detailed, elegant, serious, and specific reading. Avoid generic or templated filler. Follow this structure:
+
+1. Opening: State who the reading is for and the question. Example: "This reading was opened for [subject]. The question brought forward was: [question]." Keep it elegant.
+2. One-Sentence Signal: A single, short sentence summarizing the core energy of the spread.
+3. Themes: A comma-separated list of exactly 3 to 5 theme keywords.
+4. Card-by-Card Reading: For each card in pull order:
+   "In position [position label], representing [position label], you pulled [card name] [upright/reversed]. This suggests..."
+   Include the card name, orientation, position, explain its meaning relative to the question, and pull order.
+5. Synthesis: A section beginning with: "So what this tells us is..." connecting the cards together into a coherent final verdict.
+6. Plain-English Summary: A short and practical summary section starting with the heading "In plain English".
+7. Closing: A gentle closing line. Example: "Sit with what resonates, leave what does not, and return to this reading when the pattern starts showing itself."
+
 Return JSON structure:
 {
   "summary": "...",
@@ -565,21 +591,47 @@ Return JSON structure:
 
     let interpretation = '';
     let summary = '';
+    const sortedCards = [...cards].sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
 
     if (!this.env.OPENAI_API_KEY) {
-      interpretation = `[Draft Interpretation Fallback] The card configuration drawn for ${input.subject_name || 'the subject'} hints at emerging energy patterns. You have placed: ${cards.filter(c => c.card_name).map(c => `${c.card_name} (${c.orientation})`).join(', ')}. Examine notes and refine context.`;
-      summary = `Emerging energetic alignment for ${input.subject_name || 'subject'}.`;
+      interpretation = `This reading was opened for ${input.subject_name || 'Querent'}. The question brought forward was: "${input.question || 'General inquiry'}".
+
+This spread points to a moment of alignment, where new options are taking shape and challenging old habits.
+
+Themes: transition, self-trust, timing
+
+${sortedCards.map((c: any) => `In position "${c.position_label}", representing ${c.position_label}, you pulled ${c.card_name} (${c.orientation}).`).join('\n\n')}
+
+So what this tells us is that you are standing at a threshold where simple changes in perspective can produce substantial shifts.
+
+In plain English: Focus on practical grounding, do not rush decisions.
+
+Sit with what resonates, leave what does not.`;
+      summary = `A moment of adjustment asking for clear calibration and practical grounding.`;
     } else {
       const prompt = `You are a Tarot interpretation guide. Read this tarot draw draft:
 Subject: ${input.subject_name || 'Querent'}
 Question: ${input.question || 'General reading'}
 Spread: ${spread?.name || 'Three Card Thread'}
-Cards:
-${cards.filter(c => c.card_name).map((c: any) => `- ${c.position_label}: ${c.card_name} (${c.orientation}) - Notes: ${c.notes || ''}`).join('\n')}
+Cards in pull order:
+${sortedCards.map((c: any) => `- Position "${c.position_label}" (representing: ${c.position_label}): ${c.card_name} (${c.orientation}) - Reader Notes: ${c.notes || ''}`).join('\n')}
 
 Provide:
-1. A summary of the reading (max 100 characters).
+1. A summary of the reading (max 100 characters, in plain English).
 2. A detailed tarot interpretation explaining the cards, dynamic carryover, and final verdict.
+
+Format the interpretation exactly as a detailed, elegant, serious, and specific reading. Avoid generic or templated filler. Follow this structure:
+
+1. Opening: State who the reading is for and the question. Example: "This reading was opened for [subject]. The question brought forward was: [question]." Keep it elegant.
+2. One-Sentence Signal: A single, short sentence summarizing the core energy of the spread.
+3. Themes: A comma-separated list of exactly 3 to 5 theme keywords.
+4. Card-by-Card Reading: For each card in pull order:
+   "In position [position label], representing [position label], you pulled [card name] [upright/reversed]. This suggests..."
+   Include the card name, orientation, position, explain its meaning relative to the question, and pull order.
+5. Synthesis: A section beginning with: "So what this tells us is..." connecting the cards together into a coherent final verdict.
+6. Plain-English Summary: A short and practical summary section starting with the heading "In plain English".
+7. Closing: A gentle closing line. Example: "Sit with what resonates, leave what does not, and return to this reading when the pattern starts showing itself."
+
 Return JSON structure:
 {
   "summary": "...",

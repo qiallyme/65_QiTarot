@@ -65,7 +65,7 @@ export function ReadingEditor({
   onNavigateTab: (tab: 'draw' | 'signals' | 'history' | 'system') => void;
 }) {
   // Wizard Steps:
-  // 1 = Pick Spread, 2 = Shuffle & Pull, 3 = Photo, 4 = Confirm Cards, 5 = Final Review, 6 = Interpretation, 7 = Success
+  // 1 = Pick Spread, 2 = Shuffle & Pull, 3 = Photo, 4 = Confirm Cards, 5 = Final Review, 6 = Reading Report, 7 = Success
   const [step, setStep] = useState(1);
   const [spread, setSpread] = useState<SpreadTemplate>(() => spreads[0] || FALLBACK_SPREADS[0]);
 
@@ -82,8 +82,9 @@ export function ReadingEditor({
   const [cards, setCards] = useState<ReadingCardInput[]>(() => initialCards(spread));
   const [selectedSlotKey, setSelectedSlotKey] = useState('');
 
-  // Active saved reading reference (for step 6 rating/edit finalize)
+  // Active saved reading reference (for step 6 report actions)
   const [activeReadingId, setActiveReadingId] = useState<string | null>(null);
+  const [readingSavedState, setReadingSavedState] = useState(false);
 
   // Notes configuration states
   const [showNotesKeys, setShowNotesKeys] = useState<Record<string, boolean>>({});
@@ -98,6 +99,9 @@ export function ReadingEditor({
   const [oracleMsgIndex, setOracleMsgIndex] = useState(0);
   const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
 
+  // Web Speech API Synthesis state
+  const [speechState, setSpeechState] = useState<'stopped' | 'playing' | 'paused'>('stopped');
+
   // Sync profile defaults when step/mount changes
   useEffect(() => {
     const defaultReader = localStorage.getItem('qitarot_reader_name') || 'Reader';
@@ -107,6 +111,13 @@ export function ReadingEditor({
       setSubjectName(defaultSelf);
     }
   }, [subjectType, step]);
+
+  // Clean up speech synthesis on unmount
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
   // Update cards structure when spread template is chosen
   const handleSpreadSelect = (selected: SpreadTemplate) => {
@@ -130,6 +141,7 @@ export function ReadingEditor({
     [people]
   );
 
+  const cardPositionMap = useMemo(() => new Map(spread.positions.map((p) => [p.key, p])), [spread.positions]);
   const cardById = useMemo(() => new Map(cardCatalog.map((card) => [card.id, card])), [cardCatalog]);
   const spreadPositionByKey = useMemo(() => new Map(spread.positions.map((position) => [position.key, position])), [spread.positions]);
   const selectedPerson = peopleByName.get(subjectName.trim().toLowerCase());
@@ -272,6 +284,8 @@ export function ReadingEditor({
   };
 
   const handleDiscard = async () => {
+    window.speechSynthesis.cancel();
+    setSpeechState('stopped');
     if (activeReadingId) {
       try {
         await tarotApi.deleteReading(activeReadingId);
@@ -291,29 +305,26 @@ export function ReadingEditor({
     setInterpretation('');
     setRating(5);
     setActiveReadingId(null);
+    setReadingSavedState(false);
     setCards(initialCards(spread));
   };
 
   const handleInterpretReading = async () => {
     setGeneratingInterpretation(true);
-    setStep(6); // Show the oracle loading screen
+    setStep(6); // Navigate to Report view (showing Loading Oracle state)
 
     try {
-      // 1. Create reading in database
       const created = await tarotApi.createReading(readingInput);
-      
-      // 2. Upload photo if present
       const finalReading = photo ? await tarotApi.uploadPhoto(created.id, photo) : created;
       setActiveReadingId(finalReading.id);
 
-      // 3. Start polling for interpretation completion
       let attempts = 0;
       const interval = setInterval(async () => {
         attempts++;
         if (attempts > 25) {
           clearInterval(interval);
           setGeneratingInterpretation(false);
-          alert('AI interpretation is taking longer than expected. Saved as draft.');
+          alert('AI interpretation timed out. Reading saved as draft.');
           return;
         }
 
@@ -337,6 +348,36 @@ export function ReadingEditor({
     }
   };
 
+  const handleRegenerateInterpretation = async () => {
+    if (!activeReadingId || generatingInterpretation) return;
+    setGeneratingInterpretation(true);
+    window.speechSynthesis.cancel();
+    setSpeechState('stopped');
+
+    try {
+      await tarotApi.requestInterpretation(activeReadingId);
+      let attempts = 0;
+      const interval = setInterval(async () => {
+        attempts++;
+        if (attempts > 20) {
+          clearInterval(interval);
+          setGeneratingInterpretation(false);
+          return;
+        }
+        const current = await tarotApi.getReading(activeReadingId);
+        if (current.ai_status === 'complete' || current.ai_status === 'failed') {
+          clearInterval(interval);
+          setInterpretation(current.interpretation || '');
+          setSummary(current.summary || '');
+          setGeneratingInterpretation(false);
+        }
+      }, 2000);
+    } catch (err) {
+      console.error('Regeneration request failed:', err);
+      setGeneratingInterpretation(false);
+    }
+  };
+
   const handleFinalizeSave = async () => {
     if (!activeReadingId) return;
 
@@ -348,17 +389,106 @@ export function ReadingEditor({
         interpretation
       });
       onCompleteReading(updated);
-      setStep(7); // Show Success Screen
+      setReadingSavedState(true);
+      setStep(7); // Show Success screen
     } catch (err) {
       console.error('Failed to save reading details:', err);
     }
+  };
+
+  // Sort confirmed cards by pull order_index for report view
+  const sortedReportCards = useMemo(() => {
+    return [...cards]
+      .filter((c) => c.card_name)
+      .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+  }, [cards]);
+
+  // Read Aloud speech script generator
+  const handleReadAloud = () => {
+    if (speechState === 'playing') {
+      window.speechSynthesis.pause();
+      setSpeechState('paused');
+      return;
+    }
+    if (speechState === 'paused') {
+      window.speechSynthesis.resume();
+      setSpeechState('playing');
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    // Prepare Narration script (strips markdown details for clean speech)
+    const cardReadings = sortedReportCards.map((c) => {
+      const pos = cardPositionMap.get(c.position_key);
+      const posMeaning = pos ? pos.prompt : '';
+      return `In position ${c.position_label}, representing ${posMeaning || 'this aspect'}, you pulled the ${c.card_name} ${c.orientation === 'reversed' ? 'reversed' : 'upright'}. ${c.notes ? `Your card insights note: ${c.notes}` : ''}`;
+    }).join('. ');
+
+    const narrationScript = [
+      `Tarot Reading report for ${subjectName || 'the Querent'}.`,
+      question ? `The situation brought forward is: ${question}.` : 'This is a general spread inquiry.',
+      `The central themes identified are: ${tags || 'transition and calibration'}.`,
+      cardReadings,
+      `Synthesis of this draw:`,
+      interpretation,
+      summary ? `In plain English: ${summary}` : '',
+      `Sit with what resonates, leave what does not.`
+    ].join('\n\n');
+
+    const utterance = new SpeechSynthesisUtterance(narrationScript);
+    utterance.rate = 0.95; // elegant pacing
+    utterance.onend = () => setSpeechState('stopped');
+    utterance.onerror = () => setSpeechState('stopped');
+
+    window.speechSynthesis.speak(utterance);
+    setSpeechState('playing');
+  };
+
+  const handleStopSpeech = () => {
+    window.speechSynthesis.cancel();
+    setSpeechState('stopped');
+  };
+
+  // Copy text or Web Share API
+  const handleShareReading = async () => {
+    const shareTitle = `QiTarot Reading Report`;
+    const shareText = `A Tarot reading about: "${question || 'General inquiry'}". takeaway: ${summary}`;
+    const shareUrl = window.location.href;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl
+        });
+      } catch (err) {
+        console.warn('Share sheet cancelled:', err);
+      }
+    } else {
+      // Clipboard fallback
+      const fullText = `${shareTitle}\n\nSubject: ${subjectName}\nQuestion: ${question || 'General'}\nTakeaway: ${summary}\n\nInterpretation Details:\n${interpretation}`;
+      try {
+        await navigator.clipboard.writeText(fullText);
+        alert('Reading report copied to clipboard!');
+      } catch (err) {
+        console.error('Clipboard copy failed:', err);
+      }
+    }
+  };
+
+  const handleCopyRawText = () => {
+    const fullText = `QiTarot Report\nSpread: ${spread.name}\nSubject: ${subjectName}\nQuestion: ${question || 'General'}\n\nInterpretation:\n${interpretation}\n\nSummary:\n${summary}`;
+    navigator.clipboard.writeText(fullText);
+    alert('Report copy complete.');
   };
 
   return (
     <div className="guided-flow-container">
       {/* Wizard Progress Header */}
       {step < 7 && (
-        <div className="guided-progressbar">
+        <div className="guided-progressbar no-print">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <span
               key={i}
@@ -525,7 +655,6 @@ export function ReadingEditor({
             Confirm detected cards on each slot. Click card to edit.
           </p>
 
-          {/* Split Panel Area */}
           <div className="confirm-split-container">
             {photoPreviewUrl && (
               <div className="uploaded-photo-preview-panel">
@@ -696,45 +825,126 @@ export function ReadingEditor({
         </div>
       )}
 
-      {/* Step 6: Interpretation Screen (with Cyclic Loading State) */}
+      {/* Step 6: Dedicated Reading Report View (Collapsible, Narratable, Shareable) */}
       {step === 6 && (
-        <div className="flow-step step-interpretation panel stack">
+        <div className="flow-step step-interpretation-report">
           {generatingInterpretation ? (
-            <div className="oracle-loading-state">
+            <div className="oracle-loading-state panel">
               <div className="pulse-oracle">🔮</div>
               <h2>Decrypting the Signals</h2>
               <div className="processing-loader"></div>
               <p className="oracle-rotating-message">{ORACLE_MESSAGES[oracleMsgIndex]}</p>
             </div>
           ) : (
-            <>
-              <div className="panel-heading">
-                <p className="eyebrow">Step 6</p>
-                <h2>Interpretation Insights</h2>
+            <div className="panel stack reading-report-panel">
+              {/* Report Header */}
+              <div className="report-main-header">
+                <div className="header-meta no-print">
+                  <span className="eyebrow-accent">Tarot Reading Report</span>
+                  <time>{new Date().toLocaleDateString()}</time>
+                </div>
+                <h2 className="report-title">The Oracle Report</h2>
+                <div className="report-meta-grid">
+                  <div className="meta-row">
+                    <span>Subject:</span> <strong>{subjectName}</strong>
+                  </div>
+                  <div className="meta-row">
+                    <span>Reader:</span> <strong>{readerName || 'Self'}</strong>
+                  </div>
+                  <div className="meta-row">
+                    <span>Spread Template:</span> <strong>{spread.name}</strong>
+                  </div>
+                  {question && (
+                    <div className="meta-row wide">
+                      <span>Inquiry Situation:</span> <strong>"{question}"</strong>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="form-grid">
-                <label className="wide">
-                  Detailed Interpretation
-                  <textarea
-                    className="tall"
-                    value={interpretation}
-                    onChange={(event) => setInterpretation(event.target.value)}
-                    placeholder="AI or manual interpretation details..."
-                  />
-                </label>
+              {/* Action Ribbon (Read Aloud, Share, PDF) */}
+              <div className="report-action-ribbon no-print">
+                <div className="speech-controls-group">
+                  <button
+                    type="button"
+                    className={`speech-btn primary-speech ${speechState === 'playing' ? 'playing' : ''}`}
+                    onClick={handleReadAloud}
+                  >
+                    {speechState === 'playing' ? '⏸ Pause Narration' : '🔊 Listen Reading'}
+                  </button>
+                  {speechState !== 'stopped' && (
+                    <button type="button" className="secondary stop-speech-btn" onClick={handleStopSpeech}>
+                      ⏹ Stop
+                    </button>
+                  )}
+                </div>
+                <div className="export-controls-group">
+                  <button type="button" className="secondary" onClick={handleShareReading}>
+                    🔗 Share Reading
+                  </button>
+                  <button type="button" className="secondary" onClick={handleCopyRawText}>
+                    📋 Copy Text
+                  </button>
+                  <button type="button" className="secondary" onClick={() => window.print()}>
+                    🖨 Print / PDF
+                  </button>
+                </div>
+              </div>
 
-                <label className="wide">
-                  Summary takeaway
-                  <textarea
-                    value={summary}
-                    onChange={(event) => setSummary(event.target.value)}
-                    placeholder="Takeaway summary..."
-                  />
-                </label>
+              {/* Reconstructed Cards pull display list in exact pull order */}
+              <div className="report-cards-pull-section">
+                <h4>Spread Layout (Pull Order)</h4>
+                <div className="report-cards-grid">
+                  {sortedReportCards.map((c) => (
+                    <div className="report-card-row-item" key={c.position_key}>
+                      <div className="report-card-art-box">
+                        {c.card_image_url ? (
+                          <img
+                            src={c.card_image_url}
+                            alt={c.card_name}
+                            className={`report-card-image ${c.orientation === 'reversed' ? 'reversed-art' : ''}`}
+                            onError={(e) => {
+                              // Fallback display card label only
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <div className="art-placeholder">🎴</div>
+                        )}
+                      </div>
+                      <div className="report-card-meaning-details">
+                        <span className="pull-order-number">Slot {c.order_index}</span>
+                        <h5>
+                          {c.position_label} ➔ <strong className="card-name-highlight">{c.card_name}</strong>
+                          <span className={`card-orientation-badge ${c.orientation}`}>
+                            ({c.orientation.toUpperCase()})
+                          </span>
+                        </h5>
+                        <p className="card-meaning-summary-text">{c.meaning_snapshot}</p>
+                        {c.notes && (
+                          <div className="card-reader-custom-notes">
+                            <strong>Reader insights:</strong> <em>"{c.notes}"</em>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-                <div className="wide rating-stars-selection">
-                  <label>Rate this Reading</label>
+              <hr className="report-divider" />
+
+              {/* Live Interpretation Content Display */}
+              <div className="report-interpretation-essay-area">
+                <div className="report-essay-body" style={{ whiteSpace: 'pre-wrap' }}>
+                  {interpretation}
+                </div>
+              </div>
+
+              {/* Star Rating Selectors & Save/Discard controls */}
+              <div className="report-footer-actions no-print panel stack">
+                <div className="rating-select-group">
+                  <label>Journal Rating</label>
                   <div className="star-rating-chips">
                     {[1, 2, 3, 4, 5].map((stars) => (
                       <button
@@ -749,57 +959,26 @@ export function ReadingEditor({
                   </div>
                 </div>
 
-                <div className="wide suggested-tags-box">
-                  <label>Reflection Tags</label>
-                  <div className="chips-container">
-                    {splitTags(tags).map(t => (
-                      <span className="chip" key={t}>
-                        #{t}
-                        <button type="button" className="remove-chip-btn" onClick={() => removeTag(t)}>✕</button>
-                      </span>
-                    ))}
-                    <input
-                      type="text"
-                      className="add-chip-input"
-                      placeholder="+ Add Tag (Press Enter)"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          const target = e.target as HTMLInputElement;
-                          const newTag = target.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
-                          if (newTag && !splitTags(tags).includes(newTag)) {
-                            setTags(prev => prev ? `${prev}, ${newTag}` : newTag);
-                          }
-                          target.value = '';
-                        }
-                      }}
-                    />
-                  </div>
+                <div className="step-actions vertical-actions">
+                  <button type="button" className="primary save-btn" onClick={handleFinalizeSave}>
+                    ✓ Save to Journal
+                  </button>
+                  <button type="button" className="secondary retry-analysis-btn" onClick={handleRegenerateInterpretation}>
+                    🔄 Regenerate Interpretation
+                  </button>
+                  <button type="button" className="danger discard-btn" onClick={handleDiscard}>
+                    ✕ Discard Reading
+                  </button>
                 </div>
               </div>
-
-              <div className="step-actions vertical-actions">
-                <button type="button" className="primary save-btn" onClick={handleFinalizeSave}>
-                  ✓ Save to Journal
-                </button>
-                <button type="button" className="danger discard-btn" onClick={handleDiscard}>
-                  ✕ Discard Reading
-                </button>
-              </div>
-
-              <div className="step-actions">
-                <button type="button" className="secondary" onClick={() => setStep(4)}>
-                  ← Edit Cards
-                </button>
-              </div>
-            </>
+            </div>
           )}
         </div>
       )}
 
       {/* Step 7: Success Screen */}
       {step === 7 && (
-        <div className="flow-step step-success-journal panel stack text-center">
+        <div className="flow-step step-success-journal panel stack text-center no-print">
           <div className="success-icon-banner">✅</div>
           <h2>Saved to Journal!</h2>
           <p className="step-guide">
