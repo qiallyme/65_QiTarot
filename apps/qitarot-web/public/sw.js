@@ -12,6 +12,11 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  // Bypass API calls, Supabase endpoints, and non-GET requests
+  if (event.request.method !== 'GET' || url.pathname.startsWith('/v1/') || url.hostname === 'api.qially.com' || url.hostname.endsWith('supabase.co') || url.hostname.endsWith('workers.dev')) {
+    return;
+  }
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
